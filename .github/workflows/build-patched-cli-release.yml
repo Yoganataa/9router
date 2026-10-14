@@ -40,6 +40,19 @@ jobs:
           npm install --no-audit --no-fund --no-progress
           npm install --prefix cli --no-audit --no-fund --no-progress
 
+      - name: Install test runner
+        run: npm install --no-save --no-package-lock --no-audit --no-fund --no-progress vitest
+
+      - name: Run OpenCode regression tests
+        run: |
+          ./node_modules/.bin/vitest run \
+            tests/unit/opencode-fingerprint.test.js \
+            tests/unit/opencode-free-tool-choice.test.js \
+            tests/unit/opencode-muse-spark-thinking.test.js \
+            tests/unit/opencode-session.test.js \
+            tests/unit/opencode-go-session.test.js \
+            tests/unit/executor-const-guard.test.js
+
       - name: Build CLI package
         env:
           NEXT_TELEMETRY_DISABLED: "1"
@@ -70,7 +83,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Fixes OpenCode session compatibility by generating canonical session IDs, keeping translated IDs stable across requests, and consistently forwarding x-opencode-session-id."
+          NOTES="Fixes OpenCode v2 free-tier inference compatibility, including endpoint routing, session headers, and tool fingerprint handling."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --title "9Router $TAG" --notes "$NOTES" --latest
