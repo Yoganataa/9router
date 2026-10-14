@@ -70,16 +70,17 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Fixes OpenCode session compatibility by generating canonical session IDs, keeping translated IDs stable across requests, and forwarding `x-opencode-session-id` consistently."
+          NOTES="Fixes OpenCode session compatibility by generating canonical session IDs, keeping translated IDs stable across requests, and consistently forwarding x-opencode-session-id."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "9Router $TAG" --notes "$NOTES"
+            gh release edit "$TAG" --title "9Router $TAG" --notes "$NOTES" --latest
             gh release upload "$TAG" "$TARBALL" "$TARBALL.sha256" --clobber
           else
             gh release create "$TAG" "$TARBALL" "$TARBALL.sha256" \
               --title "9Router $TAG" \
               --notes "$NOTES" \
-              --target "$GITHUB_SHA"
+              --target "$GITHUB_SHA" \
+              --latest
           fi
 
           if gh release view opencode-session-4828 >/dev/null 2>&1; then
