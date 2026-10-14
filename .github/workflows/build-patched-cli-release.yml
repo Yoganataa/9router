@@ -5,8 +5,9 @@ on:
     branches:
       - fix/opencode-canonical-session-release
 
-permissions:
-  contents: read
+concurrency:
+  group: patched-cli-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -28,9 +29,17 @@ jobs:
           test -f 9router-0.5.99.tgz
           tar -tzf 9router-0.5.99.tgz >/dev/null
           sha256sum 9router-0.5.99.tgz
-      - uses: actions/upload-artifact@v4
-        with:
-          name: 9router-opencode-session-4828
-          path: 9router-0.5.99.tgz
-          if-no-files-found: error
-          retention-days: 30
+      - name: Publish public patched package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="opencode-session-4828"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" 9router-0.5.99.tgz --clobber
+          else
+            gh release create "$TAG" 9router-0.5.99.tgz \
+              --title "9Router OpenCode session patch (unofficial)" \
+              --notes "Prebuilt CLI package from Yoganataa/9router with the session compatibility patch from upstream PR #4828." \
+              --target "${GITHUB_SHA}"
+          fi
