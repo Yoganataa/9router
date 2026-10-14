@@ -5,6 +5,9 @@ on:
     branches:
       - fix/opencode-canonical-session-release
 
+permissions:
+  contents: write
+
 concurrency:
   group: patched-cli-release
   cancel-in-progress: false
