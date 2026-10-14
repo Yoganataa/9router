@@ -55,7 +55,7 @@ export async function handleSystemoneCore({
   const session = generateSessionId();
   const headers = {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: *** ${token}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(cfg.headers || {}),
     // Zen lanes expect the official client session header on every request.
     "x-opencode-session": session,
