@@ -150,8 +150,10 @@ describe("OpenCode Free Executor Session Resolution", () => {
     });
 
     expect(result.headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
+    expect(result.headers["x-opencode-session-id"]).toBe(result.headers["x-opencode-session"]);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][1].headers["x-opencode-session"]).toBe(result.headers["x-opencode-session"]);
+    expect(fetchMock.mock.calls[0][1].headers["x-opencode-session-id"]).toBe(result.headers["x-opencode-session"]);
     expect(fetchMock.mock.calls[0][1].headers["Authorization"]).toBe("Bearer public");
     expect(credentials).not.toHaveProperty("_opencodeSession");
   });
@@ -161,6 +163,7 @@ describe("OpenCode Free Executor Session Resolution", () => {
     const headers = executor.buildHeaders({});
 
     expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
+    expect(headers["x-opencode-session-id"]).toBe(headers["x-opencode-session"]);
     expect(headers["Authorization"]).toBe("Bearer public");
   });
   it("handles null or undefined body gracefully in transformRequest", () => {
@@ -344,5 +347,23 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
   it("declares forceStream on the opencode transport so chatCore serves SSE upstream", async () => {
     const { PROVIDERS } = await import("../../open-sse/config/providers.js");
     expect(PROVIDERS.opencode?.forceStream).toBe(true);
+  });
+
+  it("translates downstream sessions into canonical inverted-timestamp sessions", () => {
+    const id = translateSessionId("client-session-123", "claude");
+    expect(id).toMatch(OPENCODE_SESSION_RE);
+    expect(id).toHaveLength(30);
+
+    // Stable per downstream session
+    expect(translateSessionId("client-session-123", "claude")).toBe(id);
+
+    // Different downstream session produces different id
+    const other = translateSessionId("client-session-456", "claude");
+    expect(other).toMatch(OPENCODE_SESSION_RE);
+    expect(other).not.toBe(id);
+
+    // Native ses_ format is preserved as-is
+    const native = generateSessionId();
+    expect(translateSessionId(native, "claude")).toBe(native);
   });
 });
