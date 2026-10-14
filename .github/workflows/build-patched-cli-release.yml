@@ -1,0 +1,36 @@
+name: Build patched 9Router CLI
+
+on:
+  push:
+    branches:
+      - fix/opencode-canonical-session-release
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: |
+          npm install --no-audit --no-fund
+          npm install --prefix cli --no-audit --no-fund
+      - name: Build CLI package
+        run: npm run cli:pack
+      - name: Validate package
+        run: |
+          test -f 9router-0.5.99.tgz
+          tar -tzf 9router-0.5.99.tgz >/dev/null
+          sha256sum 9router-0.5.99.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 9router-opencode-session-4828
+          path: 9router-0.5.99.tgz
+          if-no-files-found: error
+          retention-days: 30
