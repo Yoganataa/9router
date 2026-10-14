@@ -1,15 +1,23 @@
-name: Build patched 9Router CLI
+name: Build and release 9Router CLI
 
 on:
   push:
     branches:
-      - fix/opencode-canonical-session-release
+      - dev
+    paths:
+      - "cli/**"
+      - "open-sse/**"
+      - "src/**"
+      - "app/**"
+      - "scripts/**"
+      - "package.json"
+      - ".github/workflows/build-patched-cli-release.yml"
 
 permissions:
   contents: write
 
 concurrency:
-  group: patched-cli-release
+  group: 9router-patch-release
   cancel-in-progress: false
 
 jobs:
@@ -18,9 +26,11 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Install dependencies
         env:
           NEXT_TELEMETRY_DISABLED: "1"
@@ -29,6 +39,7 @@ jobs:
         run: |
           npm install --no-audit --no-fund --no-progress
           npm install --prefix cli --no-audit --no-fund --no-progress
+
       - name: Build CLI package
         env:
           NEXT_TELEMETRY_DISABLED: "1"
@@ -36,31 +47,51 @@ jobs:
           MAKEFLAGS: "-j1"
           NODE_OPTIONS: "--max-old-space-size=6144"
         run: npm run cli:pack
+
       - name: Validate package
+        id: package
+        shell: bash
         run: |
-          test -f 9router-0.5.99.tgz
-          tar -tzf 9router-0.5.99.tgz >/dev/null
-          sha256sum 9router-0.5.99.tgz | tee 9router-0.5.99.tgz.sha256
-      - name: Publish public patched package
+          VERSION="$(node -p "require('./cli/package.json').version")"
+          TARBALL="9router-${VERSION}.tgz"
+          test -f "$TARBALL"
+          tar -tzf "$TARBALL" >/dev/null
+          PACKAGE_VERSION="$(tar -xOf "$TARBALL" package/package.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
+          test "$PACKAGE_VERSION" = "$VERSION"
+          sha256sum "$TARBALL" | tee "$TARBALL.sha256"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          TAG="opencode-session-4828"
+          VERSION="${{ steps.package.outputs.version }}"
+          TARBALL="${{ steps.package.outputs.tarball }}"
+          TAG="v${VERSION}"
+          NOTES="Fixes OpenCode session compatibility by generating canonical session IDs, keeping translated IDs stable across requests, and forwarding `x-opencode-session-id` consistently."
+
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" 9router-0.5.99.tgz 9router-0.5.99.tgz.sha256 --clobber
+            gh release edit "$TAG" --title "9Router $TAG" --notes "$NOTES"
+            gh release upload "$TAG" "$TARBALL" "$TARBALL.sha256" --clobber
           else
-            gh release create "$TAG" 9router-0.5.99.tgz 9router-0.5.99.tgz.sha256 \
-              --title "9Router OpenCode session patch (unofficial)" \
-              --notes "Prebuilt CLI package from Yoganataa/9router with the session compatibility patch from upstream PR #4828." \
-              --target "${GITHUB_SHA}"
+            gh release create "$TAG" "$TARBALL" "$TARBALL.sha256" \
+              --title "9Router $TAG" \
+              --notes "$NOTES" \
+              --target "$GITHUB_SHA"
           fi
+
+          if gh release view opencode-session-4828 >/dev/null 2>&1; then
+            gh release delete opencode-session-4828 --yes --cleanup-tag
+          fi
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: 9router-opencode-session-4828
+          name: 9router-cli-${{ steps.package.outputs.version || 'build' }}
           path: |
-            9router-0.5.99.tgz
-            9router-0.5.99.tgz.sha256
+            9router-*.tgz
+            9router-*.tgz.sha256
           if-no-files-found: warn
           retention-days: 14
