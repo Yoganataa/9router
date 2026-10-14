@@ -19,16 +19,25 @@ jobs:
         with:
           node-version: 22
       - name: Install dependencies
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          CI: "1"
+          MAKEFLAGS: "-j1"
         run: |
-          npm install --no-audit --no-fund
-          npm install --prefix cli --no-audit --no-fund
+          npm install --no-audit --no-fund --no-progress
+          npm install --prefix cli --no-audit --no-fund --no-progress
       - name: Build CLI package
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          CI: "1"
+          MAKEFLAGS: "-j1"
+          NODE_OPTIONS: "--max-old-space-size=6144"
         run: npm run cli:pack
       - name: Validate package
         run: |
           test -f 9router-0.5.99.tgz
           tar -tzf 9router-0.5.99.tgz >/dev/null
-          sha256sum 9router-0.5.99.tgz
+          sha256sum 9router-0.5.99.tgz | tee 9router-0.5.99.tgz.sha256
       - name: Publish public patched package
         env:
           GH_TOKEN: ${{ github.token }}
@@ -36,10 +45,19 @@ jobs:
         run: |
           TAG="opencode-session-4828"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" 9router-0.5.99.tgz --clobber
+            gh release upload "$TAG" 9router-0.5.99.tgz 9router-0.5.99.tgz.sha256 --clobber
           else
-            gh release create "$TAG" 9router-0.5.99.tgz \
+            gh release create "$TAG" 9router-0.5.99.tgz 9router-0.5.99.tgz.sha256 \
               --title "9Router OpenCode session patch (unofficial)" \
               --notes "Prebuilt CLI package from Yoganataa/9router with the session compatibility patch from upstream PR #4828." \
               --target "${GITHUB_SHA}"
           fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: 9router-opencode-session-4828
+          path: |
+            9router-0.5.99.tgz
+            9router-0.5.99.tgz.sha256
+          if-no-files-found: warn
+          retention-days: 14
