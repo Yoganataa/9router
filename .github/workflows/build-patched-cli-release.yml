@@ -85,19 +85,14 @@ jobs:
           NOTES="Fixes OpenCode v2 free-tier inference compatibility, including endpoint routing, session headers, and tool fingerprint handling."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --title "9Router $TAG" --notes "$NOTES" --latest
-            gh release upload "$TAG" "$TARBALL" "$TARBALL.sha256" --clobber
-          else
-            gh release create "$TAG" "$TARBALL" "$TARBALL.sha256" \
-              --title "9Router $TAG" \
-              --notes "$NOTES" \
-              --target "$GITHUB_SHA" \
-              --latest
+            gh release delete "$TAG" --yes --cleanup-tag
           fi
 
-          if gh release view opencode-session-4828 >/dev/null 2>&1; then
-            gh release delete opencode-session-4828 --yes --cleanup-tag
-          fi
+          gh release create "$TAG" "$TARBALL" "$TARBALL.sha256" \
+            --title "9Router $TAG" \
+            --notes "$NOTES" \
+            --target "$GITHUB_SHA" \
+            --latest
 
       - uses: actions/upload-artifact@v4
         if: always()
