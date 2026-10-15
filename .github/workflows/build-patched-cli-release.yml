@@ -13,6 +13,9 @@ on:
       - "tests/unit/opencode-session.test.js"
       - "tests/unit/opencode-muse-spark-thinking.test.js"
       - "tests/unit/openai-responses-incomplete.test.js"
+      - "tests/unit/headroom-detect.test.js"
+      - "tests/unit/headroom-process.test.js"
+      - "tests/unit/configured-api-key.test.js"
       - "package.json"
       - ".github/workflows/build-patched-cli-release.yml"
 
@@ -55,7 +58,10 @@ jobs:
             tests/unit/opencode-muse-spark-thinking.test.js \
             tests/unit/openai-responses-incomplete.test.js \
             tests/unit/opencode-session.test.js \
-            tests/unit/opencode-go-session.test.js 
+            tests/unit/opencode-go-session.test.js \
+            tests/unit/headroom-detect.test.js \
+            tests/unit/headroom-process.test.js \
+            tests/unit/configured-api-key.test.js
 
       - name: Build CLI package
         env:
@@ -87,7 +93,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Fixes OpenCode v2 compatibility, Zen free-tier routing, Muse Spark adaptive thinking, and truncated Responses usage/finish reasons."
+          NOTES="Fixes OpenCode compatibility, stabilizes Headroom proxy startup and extra verification, and supports configured API-key bootstrap."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
