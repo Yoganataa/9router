@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fetchMock } = vi.hoisted(() => ({
+const { fetchMock, nativeFetchMock } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
+  nativeFetchMock: vi.fn(),
 }));
 
 vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
@@ -16,9 +17,13 @@ import {
   stableSessionId,
 } from "../../open-sse/executors/opencode.js";
 import {
+  OpenCodeZenExecutor,
   generateSessionId as generateZenSessionId,
   translateSessionId as translateZenSessionId,
 } from "../../open-sse/executors/opencode-zen.js";
+import { handleSystemoneCore } from "../../open-sse/handlers/systemoneCore.js";
+import { getModelSupportedFormats } from "../../open-sse/config/providerModels.js";
+import { isOpencodeFreeTierModel } from "../../open-sse/providers/models/helpers.js";
 
 function makeCredentials(overrides = {}) {
   return {
@@ -45,6 +50,18 @@ beforeEach(() => {
     status: 200,
     headers: { "content-type": "application/json" },
   }));
+  nativeFetchMock.mockReset();
+  nativeFetchMock.mockResolvedValue(new Response(JSON.stringify({
+    result: "ok",
+    usage: { input_tokens: 1, output_tokens: 1 },
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  }));
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("OpenCode Free Session ID Format", () => {
@@ -366,3 +383,152 @@ describe("OpenCode Zen (opencode-zen) v2 Free-Tier Fingerprint", () => {
   });
 });
 
+
+
+function opencodeZenHeadersFor(model, overrides = {}) {
+  const executor = new OpenCodeZenExecutor();
+  const credentials = executor.prepareRequestCredentials({
+    body: { messages: [{ role: "user", content: "hi" }] },
+    credentials: {
+      apiKey: "oc_sk_test_key",
+      rawHeaders: {},
+      connectionId: "conn_test",
+      ...overrides,
+    },
+    providerSessionId: "conversation-a",
+    clientTool: "test",
+  });
+  return executor.buildHeaders(credentials, true, "https://opencode.ai/zen/v1/chat/completions", model);
+}
+
+describe("OpenCode Zen free-tier routing and auth regression", () => {
+  it("classifies suffix-based free models, Big Pickle, prefixes, and thinking overrides", () => {
+    for (const model of [
+      "mimo-v2.6-flash-free",
+      "muse-spark-1.3-contributor-free",
+      "deepseek-v4-flash-free",
+      "jev-1.13-free",
+      "big-pickle",
+      "ocz/big-pickle(max)",
+    ]) {
+      expect(isOpencodeFreeTierModel(model)).toBe(true);
+    }
+    for (const model of ["muse-spark-1.3", "kimi-k3(max)", "gpt-5.5", "", null]) {
+      expect(isOpencodeFreeTierModel(model)).toBe(false);
+    }
+  });
+
+  it("recognizes namespaced Muse Spark models as Responses-only", () => {
+    const formats = getModelSupportedFormats("ocz", "ocz/muse-spark-1.3-contributor-free");
+    expect(formats).toContain("openai-responses");
+  });
+
+  it("routes free models to inference and preserves paid Zen endpoints", () => {
+    const executor = new OpenCodeZenExecutor();
+    expect(executor.buildUrl("mimo-v2.6-flash-free", true)).toBe(
+      "https://opencode.ai/inference/v1/chat/completions",
+    );
+    expect(executor.buildUrl("muse-spark-1.3-contributor-free", true)).toBe(
+      "https://opencode.ai/inference/v1/responses",
+    );
+    expect(executor.buildUrl("big-pickle", true)).toBe(
+      "https://opencode.ai/inference/v1/chat/completions",
+    );
+    expect(executor.buildUrl("kimi-k3", true)).toBe(
+      "https://opencode.ai/zen/v1/chat/completions",
+    );
+    expect(executor.buildUrl("muse-spark-1.3", true)).toBe(
+      "https://opencode.ai/zen/v1/responses",
+    );
+  });
+
+  it("uses v2 CLI fingerprint, public auth, and mirrored sessions for free-tier requests", () => {
+    const headers = opencodeZenHeadersFor("mimo-v2.6-flash-free", {
+      runtimeTransport: {
+        headers: {
+          "x-api-key": "legacy-api-key",
+          "x-opencode-request": "msg_legacy_request_id",
+        },
+      },
+    });
+    const session = headers["x-opencode-session"];
+    expect(headers.Authorization).toBe("Bearer public");
+    expect(headers["x-api-key"]).toBeUndefined();
+    expect(headers["x-opencode-request"]).toBeUndefined();
+    expect(headers["User-Agent"]).toBe("opencode/latest/2.0.29/cli");
+    expect(headers["x-opencode-client"]).toBe("cli");
+    expect(headers["x-opencode-project"]).toBe("global");
+    expect(session).toMatch(OPENCODE_SESSION_RE);
+    expect(headers["x-opencode-session-id"]).toBe(session);
+    expect(headers["x-session-affinity"]).toBe(session);
+    expect(headers["x-session-id"]).toBe(session);
+  });
+
+  it("keeps the configured API key on paid models", () => {
+    const headers = opencodeZenHeadersFor("kimi-k3", {
+      runtimeTransport: { headers: { "x-api-key": "paid-custom-header" } },
+    });
+    expect(headers.Authorization).toBe("Bearer oc_sk_test_key");
+    expect(headers["x-api-key"]).toBe("paid-custom-header");
+  });
+
+  it("sanitizes free-tier provider overrides after the base executor merges them", async () => {
+    const executor = new OpenCodeZenExecutor();
+    await executor.execute({
+      model: "mimo-v2.6-flash-free",
+      stream: true,
+      body: { messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "oc_sk_test_key", connectionId: "conn_test", rawHeaders: {} },
+      providerOverrides: {
+        headers: {
+          "x-api-key": "override-api-key",
+          "X-OpenCode-Request": "msg_legacy_id",
+          authorization: "Bearer override-token",
+          "X-Debug-Trace": "preserve-me",
+        },
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://opencode.ai/inference/v1/chat/completions");
+    expect(options.headers.Authorization).toBe("Bearer public");
+    for (const key of Object.keys(options.headers)) {
+      expect(["authorization", "x-api-key", "x-opencode-request"]).not.toContain(key.toLowerCase());
+    }
+    expect(options.headers["X-Debug-Trace"]).toBe("preserve-me");
+  });
+
+  it("routes free Jev System One to inference with public auth", async () => {
+    vi.stubGlobal("fetch", nativeFetchMock);
+    await handleSystemoneCore({
+      modelInfo: { provider: "opencode-zen", model: "jev-1.13-free" },
+      body: { model: "jev-1.13-free", state: {}, questions: { q1: "answer this" } },
+      credentials: { apiKey: "oc_sk_test_key", rawHeaders: {} },
+    });
+
+    expect(nativeFetchMock).toHaveBeenCalledOnce();
+    const [url, options] = nativeFetchMock.mock.calls[0];
+    expect(url).toBe("https://opencode.ai/inference/v1/systemone");
+    expect(options.headers.Authorization).toBe("Bearer public");
+    const session = options.headers["x-opencode-session"];
+    expect(session).toMatch(OPENCODE_SESSION_RE);
+    expect(options.headers["x-opencode-session-id"]).toBe(session);
+    expect(options.headers["x-session-affinity"]).toBe(session);
+    expect(options.headers["x-session-id"]).toBe(session);
+  });
+
+  it("keeps paid Jev System One on Zen with the configured key", async () => {
+    vi.stubGlobal("fetch", nativeFetchMock);
+    await handleSystemoneCore({
+      modelInfo: { provider: "opencode-zen", model: "jev-1.13" },
+      body: { model: "jev-1.13", state: {}, questions: { q1: "answer this" } },
+      credentials: { apiKey: "oc_sk_paid_test_key", rawHeaders: {} },
+    });
+
+    expect(nativeFetchMock).toHaveBeenCalledOnce();
+    const [url, options] = nativeFetchMock.mock.calls[0];
+    expect(url).toBe("https://opencode.ai/zen/v1/systemone");
+    expect(options.headers.Authorization).toBe("Bearer oc_sk_paid_test_key");
+  });
+});
