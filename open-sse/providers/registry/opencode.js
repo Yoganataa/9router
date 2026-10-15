@@ -12,6 +12,11 @@ export default {
   },
   category: "free",
   noAuth: true,
+  // Retry only this provider's transient 429 when computeRetryDelay confirms
+  // the exact "Endpoint is unavailable" gateway response.
+  retry: {
+    "429": { attempts: 4, delayMs: 2000 },
+  },
   transport: {
     baseUrl: "https://opencode.ai",
     headers: {
