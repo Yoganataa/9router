@@ -60,6 +60,7 @@ const OPENCODE_FAMILIES = [
 
 export function opencodeFamilyFormats(modelId) {
   if (!modelId || typeof modelId !== "string") return null;
-  const base = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const base = clean.includes("/") ? clean.split("/").pop() : clean;
   return OPENCODE_FAMILIES.find((f) => f.match.test(base)) || null;
 }
