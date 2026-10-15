@@ -37,13 +37,14 @@ export function isDeepSeekModel(modelId) {
   return /^deepseek-/i.test(base);
 }
 
-// OpenCode free-tier ids carry a "-free" suffix. Strip provider aliases and thinking
-// overrides first so curated and passthrough model IDs use the same routing rule.
+// Most OpenCode free-tier ids carry a "-free" suffix. Big Pickle is the
+// documented exception: it is temporarily free but keeps the bare "big-pickle" id.
+// Strip provider aliases and thinking overrides before applying either rule.
 export function isOpencodeFreeTierModel(modelId) {
   if (!modelId || typeof modelId !== "string") return false;
   const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
   const base = clean.includes("/") ? clean.split("/").pop() : clean;
-  return /-free$/i.test(base);
+  return /-free$/i.test(base) || /^big-pickle$/i.test(base);
 }
 
 // Endpoint families for OpenCode models outside the curated registry (modelsFetcher /
