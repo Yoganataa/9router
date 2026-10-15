@@ -391,7 +391,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     }
 
     const message = payload?.error?.message || payload?.message || "";
-    if (!/upstream request failed:\\s*endpoint is unavailable/i.test(String(message))) {
+    if (!/upstream request failed:\s*endpoint is unavailable/i.test(String(message))) {
       return false;
     }
 
