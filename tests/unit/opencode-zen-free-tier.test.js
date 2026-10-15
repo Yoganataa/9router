@@ -1,6 +1,36 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { fetchMock, nativeFetchMock } = vi.hoisted(() => ({
+  fetchMock: vi.fn(),
+  nativeFetchMock: vi.fn(),
+}));
+
+vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
+  proxyAwareFetch: fetchMock,
+}));
+
 import { OpenCodeZenExecutor, OPENCODE_SESSION_RE } from "../../open-sse/executors/opencode-zen.js";
+import { handleSystemoneCore } from "../../open-sse/handlers/systemoneCore.js";
+import { getModelSupportedFormats } from "../../open-sse/config/providerModels.js";
 import { isOpencodeFreeTierModel } from "../../open-sse/providers/models/helpers.js";
+
+beforeEach(() => {
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "ok" } }] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  }));
+  nativeFetchMock.mockReset();
+  nativeFetchMock.mockResolvedValue(new Response(JSON.stringify({ result: "ok", usage: { input_tokens: 1, output_tokens: 1 } }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  }));
+  vi.stubGlobal("fetch", nativeFetchMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function preparedCredentials(executor, overrides = {}) {
   const body = { messages: [{ role: "user", content: "hi" }] };
@@ -52,6 +82,11 @@ describe("isOpencodeFreeTierModel", () => {
     expect(isOpencodeFreeTierModel("kimi-k3(max)")).toBe(false);
     expect(isOpencodeFreeTierModel("")).toBe(false);
     expect(isOpencodeFreeTierModel(null)).toBe(false);
+  });
+
+  it("recognizes Responses-only model families after a provider namespace", () => {
+    const formats = getModelSupportedFormats("ocz", "ocz/muse-spark-1.3-contributor-free");
+    expect(formats).toContain("openai-responses");
   });
 });
 
@@ -121,6 +156,51 @@ describe("OpenCode Zen free-tier routing and v2 fingerprint", () => {
     expect(headers.Authorization).toBe("Bearer oc_sk_test_key");
     expect(headers["x-api-key"]).toBe("paid-custom-header");
     expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
+  });
+
+  it("does not let provider overrides restore forbidden free-tier headers", async () => {
+    const executor = new OpenCodeZenExecutor();
+    await executor.execute({
+      model: "mimo-v2.6-flash-free",
+      stream: true,
+      body: { messages: [{ role: "user", content: "hi" }] },
+      credentials: { apiKey: "oc_sk_test_key", connectionId: "conn_test", rawHeaders: {} },
+      providerOverrides: {
+        headers: {
+          "x-api-key": "override-api-key",
+          "X-OpenCode-Request": "msg_legacy_id",
+          authorization: "Bearer override-token",
+          "X-Debug-Trace": "preserve-me",
+        },
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://opencode.ai/inference/v1/chat/completions");
+    const headers = options.headers;
+    expect(headers.Authorization).toBe("Bearer public");
+    for (const [key, value] of Object.entries(headers)) {
+      expect(["x-api-key", "x-opencode-request", "authorization"]).not.toContain(key.toLowerCase());
+    }
+    expect(headers["X-Debug-Trace"]).toBe("preserve-me");
+  });
+
+  it("routes and authenticates free Jev System One requests through inference", async () => {
+    await handleSystemoneCore({
+      modelInfo: { provider: "opencode-zen", model: "jev-1.13-free" },
+      body: { model: "jev-1.13-free", state: {}, questions: { q1: "answer this" } },
+      credentials: { apiKey: "oc_sk_test_key", rawHeaders: {} },
+    });
+
+    expect(nativeFetchMock).toHaveBeenCalledOnce();
+    const [url, options] = nativeFetchMock.mock.calls[0];
+    expect(url).toBe("https://opencode.ai/inference/v1/systemone");
+    expect(options.headers.Authorization).toBe("Bearer public");
+    expect(options.headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
+    expect(options.headers["x-opencode-session-id"]).toBe(options.headers["x-opencode-session"]);
+    expect(options.headers["x-session-affinity"]).toBe(options.headers["x-opencode-session"]);
+    expect(options.headers["x-session-id"]).toBe(options.headers["x-opencode-session"]);
   });
 
   it("injects fingerprint read/shell tools into chat and Responses payloads", () => {
