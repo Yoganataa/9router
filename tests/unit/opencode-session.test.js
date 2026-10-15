@@ -327,7 +327,7 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
   });
 });
 
- 
+
 describe("OpenCode Zen (opencode-zen) v2 Free-Tier Fingerprint", () => {
   it("sends the v2 CLI User-Agent, client header, and mirrored session headers", () => {
     const executor = getExecutor("opencode-zen");
