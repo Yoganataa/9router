@@ -63,6 +63,39 @@ describe("OpenCode Free Muse Spark thinking", () => {
     expect(out.max_tokens).toBeUndefined();
   });
 
+  // Claude Code adaptive thinking maps to "auto", which OpenCode Responses rejects.
+  it("drops adaptive auto effort while retaining reasoning summaries", () => {
+    const m = "muse-spark-1.3-contributor-free";
+    const executor = new OpenCodeExecutor();
+    const claudeBody = (thinking) => ({
+      model: `oc/${m}`,
+      max_tokens: 8000,
+      thinking,
+      messages: [{ role: "user", content: "Is 2047 prime?" }],
+    });
+
+    const adaptive = executor.transformRequest(
+      m,
+      translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES, m, claudeBody({ type: "adaptive" }), true, {}, PROVIDER),
+      true,
+      {},
+    );
+    expect(adaptive.reasoning).toEqual({ summary: "auto" });
+    expect(adaptive.reasoning_effort).toBeUndefined();
+
+    const budget = executor.transformRequest(
+      m,
+      translateRequest(FORMATS.CLAUDE, FORMATS.OPENAI_RESPONSES, m, claudeBody({ type: "enabled", budget_tokens: 4000 }), true, {}, PROVIDER),
+      true,
+      {},
+    );
+    expect(budget.reasoning).toEqual({ effort: "low", summary: "auto" });
+
+    const chat = executor.transformRequest(m, { input, reasoning_effort: "auto" }, true, {});
+    expect(chat.reasoning).toEqual({ summary: "auto" });
+    expect(chat.reasoning_effort).toBeUndefined();
+  });
+
   it("routes Union Alpha through Anthropic Messages", () => {
     const caps = getCapabilitiesForModel(PROVIDER, "union-alpha");
     expect(caps.vision).toBe(true);
