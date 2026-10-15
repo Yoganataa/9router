@@ -41,7 +41,7 @@ export function isDeepSeekModel(modelId) {
 // overrides first so curated and passthrough model IDs use the same routing rule.
 export function isOpencodeFreeTierModel(modelId) {
   if (!modelId || typeof modelId !== "string") return false;
-  const clean = modelId.replace(/\\([^()]+\\)\\s*$/, "").trim();
+  const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
   const base = clean.includes("/") ? clean.split("/").pop() : clean;
   return /-free$/i.test(base);
 }
