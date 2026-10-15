@@ -71,6 +71,7 @@ describe("Headroom proxy process management", () => {
     const child = fakeChild(2147483647);
     mocks.probeProxyRunning
       .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
       .mockResolvedValue(true);
     setTimeout(() => child.emit("exit", 1, null), 0);
 
