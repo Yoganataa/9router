@@ -209,7 +209,23 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
 
   async execute(args) {
     const credentials = this.prepareRequestCredentials(args);
-    return super.execute({ ...args, credentials });
+    let providerOverrides = args?.providerOverrides;
+
+    // BaseExecutor merges per-provider header overrides after buildHeaders().
+    // Sanitize that second source too, or it could reintroduce credentials/legacy
+    // request IDs which the OpenCode free-tier attestation rejects.
+    if (isOpencodeFreeTierModel(args?.model) && providerOverrides?.headers) {
+      const overrideHeaders = { ...providerOverrides.headers };
+      for (const key of Object.keys(overrideHeaders)) {
+        if (["authorization", "x-api-key", "x-opencode-request"].includes(key.toLowerCase())) {
+          delete overrideHeaders[key];
+        }
+      }
+      overrideHeaders.Authorization = "Bearer public";
+      providerOverrides = { ...providerOverrides, headers: overrideHeaders };
+    }
+
+    return super.execute({ ...args, credentials, providerOverrides });
   }
 
   buildHeaders(credentials, stream = true, url, model) {
