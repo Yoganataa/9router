@@ -11,6 +11,8 @@ on:
       - "app/**"
       - "scripts/**"
       - "tests/unit/opencode-session.test.js"
+      - "tests/unit/opencode-muse-spark-thinking.test.js"
+      - "tests/unit/openai-responses-incomplete.test.js"
       - "package.json"
       - ".github/workflows/build-patched-cli-release.yml"
 
@@ -51,6 +53,7 @@ jobs:
             tests/unit/opencode-free-tool-choice.test.js \
             tests/unit/opencode-endpoint-retry.test.js \
             tests/unit/opencode-muse-spark-thinking.test.js \
+            tests/unit/openai-responses-incomplete.test.js \
             tests/unit/opencode-session.test.js \
             tests/unit/opencode-go-session.test.js 
 
@@ -84,7 +87,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Fixes OpenCode v2 inference compatibility, Zen free-tier routing and authentication, Jev System One routing, and retries transient endpoint availability errors."
+          NOTES="Fixes OpenCode v2 compatibility, Zen free-tier routing, Muse Spark adaptive thinking, and truncated Responses usage/finish reasons."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
