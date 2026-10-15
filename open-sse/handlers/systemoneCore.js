@@ -66,13 +66,15 @@ export async function handleSystemoneCore({
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(cfg.headers || {}),
-    "x-opencode-project": "global",
-    // OpenCode v2 mirrors its canonical session across these headers.
+    // Preserve the pre-existing session headers for native System One providers.
     "x-opencode-session": session,
     "x-opencode-session-id": session,
-    "x-session-affinity": session,
-    "x-session-id": session,
   };
+  if (isOpenCodeProvider) {
+    headers["x-opencode-project"] = "global";
+    headers["x-session-affinity"] = session;
+    headers["x-session-id"] = session;
+  }
   if (isOpenCodeFreeTier) {
     headers.Authorization = "Bearer public";
     for (const key of Object.keys(headers)) {
