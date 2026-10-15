@@ -183,7 +183,7 @@ export function getInstalledHeadroomExtras(python) {
     const version = packages.find((p) => p.name?.toLowerCase() === "headroom-ai")?.version || null;
     const extras = {};
     for (const extra of HEADROOM_COMPRESSION_EXTRAS) {
-      extras[extra] = EXTRA_MARKERS[extra].some((m) => names.has(m));
+      extras[extra] = EXTRA_MARKERS[extra].every((m) => names.has(m));
     }
     return { installed: true, version, extras };
   } catch {
