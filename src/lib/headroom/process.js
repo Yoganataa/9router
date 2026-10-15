@@ -2,14 +2,16 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { DATA_DIR } from "@/lib/dataDir.js";
-import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, EXTRA_MARKERS, getInstalledHeadroomExtras } from "./detect.js";
+import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, EXTRA_MARKERS, getInstalledHeadroomExtras, probeProxyRunning } from "./detect.js";
 
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
 const LOG_FILE = path.join(HEADROOM_DIR, "proxy.log");
 const INSTALL_LOG_FILE = path.join(HEADROOM_DIR, "install.log");
 const DEFAULT_PORT = 8787;
-const STARTUP_TIMEOUT_MS = 8000;
+const STARTUP_TIMEOUT_MS = 30000;
+const STARTUP_EXIT_GRACE_MS = 2500;
+const HEALTH_POLL_INTERVAL_MS = 350;
 
 function ensureDir() {
   if (!fs.existsSync(HEADROOM_DIR)) fs.mkdirSync(HEADROOM_DIR, { recursive: true });
@@ -27,8 +29,12 @@ function writePid(pid) {
   fs.writeFileSync(PID_FILE, String(pid));
 }
 
-function clearPid() {
-  try { if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE); } catch { /* ignore */ }
+function clearPid(expectedPid = null) {
+  try {
+    if (!fs.existsSync(PID_FILE)) return;
+    if (expectedPid !== null && readPid() !== Number(expectedPid)) return;
+    fs.unlinkSync(PID_FILE);
+  } catch { /* ignore */ }
 }
 
 // process.kill throws if pid is dead — use this to probe.
@@ -54,6 +60,26 @@ function extrasProxyArgs({ codeAware, kompress } = {}) {
 
 export async function startHeadroomProxy({ port = DEFAULT_PORT, codeAware = false, kompress = true } = {}) {
   const safePort = Number(port) > 0 && Number(port) < 65536 ? Number(port) : DEFAULT_PORT;
+  const url = `http://127.0.0.1:${safePort}`;
+  const recordedPid = readPid();
+  const existing = getManagedPid();
+
+  // Health is authoritative: a previous proxy may already be serving even if
+  // its launcher PID was not retained by the current 9Router process.
+  if (await probeProxyRunning(url)) {
+    if (recordedPid && !existing) clearPid(recordedPid);
+    return { pid: existing || null, alreadyRunning: true, managed: Boolean(existing), healthy: true };
+  }
+
+  if (recordedPid && !existing) clearPid(recordedPid);
+  if (existing) {
+    const err = new Error(
+      `Headroom process ${existing} is alive but ${url}/health is not responding. Stop or restart that process before starting another instance.`
+    );
+    err.code = "HEADROOM_UNHEALTHY";
+    throw err;
+  }
+
   const binary = findHeadroomBinary();
   if (!binary) {
     const err = new Error("Headroom CLI not installed");
@@ -61,52 +87,86 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, codeAware = fals
     throw err;
   }
 
-  const existing = getManagedPid();
-  if (existing) return { pid: existing, alreadyRunning: true };
-
   ensureDir();
-  // spawn stdio requires fd numbers, not WriteStream objects.
   const outFd = fs.openSync(LOG_FILE, "a");
+  let child = null;
+  let fdOpen = true;
+  let exitInfo = null;
 
-  const args = ["proxy", "--port", String(safePort), ...extrasProxyArgs({ codeAware, kompress })];
-  const child = spawn(binary, args, {
-    stdio: ["ignore", outFd, outFd],
-    detached: true,
-    windowsHide: true,
-    env: { ...process.env },
-  });
+  const closeLogFd = () => {
+    if (!fdOpen) return;
+    fdOpen = false;
+    try { fs.closeSync(outFd); } catch { /* already closed */ }
+  };
 
-  if (!child.pid) {
-    fs.closeSync(outFd);
-    const err = new Error("Failed to spawn headroom proxy");
-    err.code = "SPAWN_FAILED";
-    throw err;
-  }
-
-  child.unref();
-  writePid(child.pid);
-
-  // Wait until the process either stays alive briefly (success) or exits fast (failure).
-  await new Promise((resolve, reject) => {
-    const startupTimer = setTimeout(() => {
-      if (isPidAlive(child.pid)) resolve();
-      else reject(new Error("headroom proxy exited during startup — see proxy.log"));
-    }, STARTUP_TIMEOUT_MS);
-
-    child.once("exit", (code) => {
-      clearTimeout(startupTimer);
-      clearPid();
-      fs.closeSync(outFd);
-      const e = new Error(`headroom proxy exited early (code=${code}) — see proxy.log`);
-      e.code = "EARLY_EXIT";
-      reject(e);
+  try {
+    const args = ["proxy", "--port", String(safePort), ...extrasProxyArgs({ codeAware, kompress })];
+    child = spawn(binary, args, {
+      stdio: ["ignore", outFd, outFd],
+      detached: true,
+      windowsHide: true,
+      env: { ...process.env },
     });
-  });
 
-  // Close parent's copy of the fd; child retains its own after unref.
-  fs.closeSync(outFd);
+    child.once("exit", (code, signal) => {
+      exitInfo = { code, signal, at: Date.now() };
+      if (child?.pid) clearPid(child.pid);
+    });
 
-  return { pid: child.pid, alreadyRunning: false };
+    await new Promise((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", reject);
+    });
+
+    if (!child.pid) {
+      const err = new Error("Failed to spawn Headroom proxy");
+      err.code = "SPAWN_FAILED";
+      throw err;
+    }
+
+    child.unref();
+    writePid(child.pid);
+
+    const deadline = Date.now() + STARTUP_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      // Do not treat the launcher process exit as a failure if the service is
+      // already healthy. The proxy may be managed by another process.
+      if (await probeProxyRunning(url)) {
+        const managed = isPidAlive(child.pid);
+        if (!managed) clearPid(child.pid);
+        closeLogFd();
+        return {
+          pid: managed ? child.pid : null,
+          alreadyRunning: !managed,
+          managed,
+          healthy: true,
+        };
+      }
+
+      if (exitInfo && Date.now() - exitInfo.at >= STARTUP_EXIT_GRACE_MS) {
+        const detail = exitInfo.signal
+          ? `signal ${exitInfo.signal}`
+          : `code=${exitInfo.code}`;
+        const err = new Error(`Headroom proxy ${detail} before ${url}/health became ready — see proxy.log`);
+        err.code = "EARLY_EXIT";
+        throw err;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_INTERVAL_MS));
+    }
+
+    const err = new Error(`Headroom proxy did not become healthy at ${url}/health within ${STARTUP_TIMEOUT_MS / 1000}s — see proxy.log`);
+    err.code = "STARTUP_TIMEOUT";
+    throw err;
+  } catch (error) {
+    if (child?.pid && isPidAlive(child.pid)) {
+      try { process.kill(child.pid, "SIGTERM"); } catch { /* already gone */ }
+    }
+    if (child?.pid) clearPid(child.pid);
+    throw error;
+  } finally {
+    closeLogFd();
+  }
 }
 
 export function stopHeadroomProxy() {
@@ -196,12 +256,27 @@ export async function installHeadroomExtras(extras = []) {
     child.once("error", (e) => { fs.closeSync(outFd); reject(e); });
     child.once("exit", (code) => {
       fs.closeSync(outFd);
-      if (code === 0) {
-        const status = getInstalledHeadroomExtras(py);
-        resolve({ success: true, code, spec, extras: requested, ...status });
+      const status = getInstalledHeadroomExtras(py);
+      const missing = requested.filter((extra) => status.extras?.[extra] !== true);
+      if (status.installed && missing.length === 0) {
+        resolve({
+          success: true,
+          code,
+          spec,
+          extras: requested,
+          ...status,
+          ...(code === 0 ? {} : {
+            warning: `pip exited with code=${code}, but all requested extras were verified as installed.`,
+          }),
+        });
       } else {
-        const err = new Error(`pip install exited with code=${code} — see headroom/install.log`);
-        err.code = "INSTALL_FAILED";
+        const detail = missing.length
+          ? ` Requested extras not verified: ${missing.join(", ")}.`
+          : " The headroom-ai installation could not be verified.";
+        const err = new Error(
+          `pip install exited with code=${code} — see headroom/install.log.${detail}`
+        );
+        err.code = code === 0 ? "EXTRA_VERIFY_FAILED" : "INSTALL_FAILED";
         reject(err);
       }
     });
