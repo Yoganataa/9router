@@ -70,6 +70,14 @@ describe("Headroom proxy process management", () => {
   it("reports success when the service is healthy even if its launcher exits", async () => {
     const child = fakeChild(2147483647);
     mocks.probeProxyRunning
+      .mockResolvedValueOnce(false) // initial health check before launch
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(false)
       .mockResolvedValue(true);
