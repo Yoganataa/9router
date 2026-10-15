@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   execFileSync: vi.fn(() => Buffer.from(JSON.stringify([
     { name: "headroom-ai", version: "0.26.0" },
     { name: "tree-sitter", version: "0.25.0" },
+    { name: "tree-sitter-language-pack", version: "0.9.0" },
   ]))),
 }));
 
@@ -34,6 +35,21 @@ describe("headroom detect", () => {
       installed: true,
       version: "0.26.0",
       extras: { code: true, ml: false },
+    });
+  });
+
+  it("does not report a Headroom extra when only one marker package is present", () => {
+    mocks.execFileSync.mockReturnValue(Buffer.from(JSON.stringify([
+      { name: "headroom-ai", version: "0.41.0" },
+      { name: "tree-sitter", version: "0.25.0" },
+    ])));
+
+    const result = getInstalledHeadroomExtras("python3");
+
+    expect(result).toEqual({
+      installed: true,
+      version: "0.41.0",
+      extras: { code: false, ml: false },
     });
   });
 
@@ -70,6 +86,7 @@ describe("headroom detect", () => {
       if (py === "python" && args.join(" ").startsWith("-m pip list ")) return Buffer.from(JSON.stringify([
         { name: "headroom-ai", version: "0.26.0" },
         { name: "tree-sitter", version: "0.25.0" },
+        { name: "tree-sitter-language-pack", version: "0.9.0" },
       ]));
       throw new Error(`unexpected execFileSync: ${py} ${args.join(" ")}`);
     });
