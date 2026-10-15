@@ -50,6 +50,7 @@ jobs:
             tests/unit/opencode-free-tool-choice.test.js \
             tests/unit/opencode-muse-spark-thinking.test.js \
             tests/unit/opencode-session.test.js \
+            tests/unit/opencode-unavailable-retry.test.js \
             tests/unit/opencode-go-session.test.js 
 
       - name: Build CLI package
@@ -82,7 +83,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Fixes OpenCode v2 free-tier inference compatibility, including endpoint routing, session headers, and tool fingerprint handling."
+          NOTES="Adds bounded retries for transient OpenCode gateway 429 responses that report Endpoint is unavailable, while preserving real rate-limit errors."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
