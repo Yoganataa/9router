@@ -10,7 +10,7 @@ const LOG_FILE = path.join(HEADROOM_DIR, "proxy.log");
 const INSTALL_LOG_FILE = path.join(HEADROOM_DIR, "install.log");
 const DEFAULT_PORT = 8787;
 const STARTUP_TIMEOUT_MS = 30000;
-const STARTUP_EXIT_GRACE_MS = 2500;
+const STARTUP_EXIT_GRACE_MS = 10000;
 const HEALTH_POLL_INTERVAL_MS = 350;
 
 function ensureDir() {
