@@ -37,6 +37,15 @@ export function isDeepSeekModel(modelId) {
   return /^deepseek-/i.test(base);
 }
 
+// OpenCode free-tier ids carry a "-free" suffix. Strip provider aliases and thinking
+// overrides first so curated and passthrough model IDs use the same routing rule.
+export function isOpencodeFreeTierModel(modelId) {
+  if (!modelId || typeof modelId !== "string") return false;
+  const clean = modelId.replace(/\\([^()]+\\)\\s*$/, "").trim();
+  const base = clean.includes("/") ? clean.split("/").pop() : clean;
+  return /-free$/i.test(base);
+}
+
 // Endpoint families for OpenCode models outside the curated registry (modelsFetcher /
 // passthrough ids) — regex keeps auto-fetched models on the right endpoint:
 // /responses (gpt/grok/muse-spark), /messages (minimax/qwen), /chat/completions (rest).
