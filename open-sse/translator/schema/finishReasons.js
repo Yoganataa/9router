@@ -19,6 +19,12 @@ export const CLAUDE_STOP = {
   REFUSAL: "refusal",
 };
 
+// OpenAI Responses API incomplete_details.reason values for truncated turns.
+export const RESPONSES_INCOMPLETE = {
+  MAX_OUTPUT_TOKENS: "max_output_tokens",
+  CONTENT_FILTER: "content_filter",
+};
+
 // Gemini finishReason values.
 export const GEMINI_FINISH = {
   STOP: "STOP",

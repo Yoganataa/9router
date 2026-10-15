@@ -315,6 +315,9 @@ function normalizeOpencodeReasoning(model, body) {
   }
 
   body.reasoning = { ...currentReasoning, effort };
+  // Claude Code adaptive thinking maps to "auto", which OpenCode Responses rejects.
+  // Omitting effort lets upstream choose its default while retaining reasoning summaries.
+  if (effort === "auto") delete body.reasoning.effort;
   if (!body.reasoning.summary) body.reasoning.summary = "auto";
   delete body.reasoning_effort;
 }
