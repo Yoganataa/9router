@@ -326,3 +326,43 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(PROVIDERS.opencode?.forceStream).toBe(true);
   });
 });
+
+
+describe("OpenCode Zen (opencode-zen) v2 Free-Tier Fingerprint", () => {
+  it("sends the v2 CLI User-Agent, client header, and mirrored session headers", () => {
+    const executor = getExecutor("opencode-zen");
+    const headers = executor.buildHeaders({
+      rawHeaders: { "user-agent": "opencode/1.18.31" },
+    });
+    const session = headers["x-opencode-session"];
+    expect(headers["User-Agent"]).toBe("opencode/latest/2.0.29/cli");
+    expect(headers["x-opencode-client"]).toBe("cli");
+    expect(headers["x-opencode-project"]).toBe("global");
+    expect(session).toMatch(OPENCODE_SESSION_RE);
+    expect(headers["x-opencode-session-id"]).toBe(session);
+    expect(headers["x-session-affinity"]).toBe(session);
+    expect(headers["x-session-id"]).toBe(session);
+  });
+
+  it("applies the verbatim read/shell fingerprint tools and aliases conflicts on opencode-zen", () => {
+    const executor = getExecutor("opencode-zen");
+    const chat = executor.transformRequest("mimo-v2.6-flash-free", {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "read", description: "caller read" } }],
+    });
+    expect(chat.stream).toBe(true);
+    expect(chat.tools.map((t) => t.function?.name)).toEqual(["read_client", "read", "shell"]);
+    expect(chat.tools[1].function.parameters.required).toEqual(["path"]);
+    expect(chat.messages[0].role).toBe("system");
+
+    const responses = executor.transformRequest("muse-spark-1.3-contributor-free", {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      tools: [{ type: "function", name: "custom_search", description: "search", parameters: { type: "object", properties: {} } }],
+    });
+    expect(responses.stream).toBe(true);
+    expect(responses.tools.map((t) => t.name)).toEqual(["custom_search", "read", "shell"]);
+    expect(responses.tools[1].parameters.required).toEqual(["path"]);
+    expect(responses.instructions).toMatch(/Do not call the `read` or `shell` tools/);
+  });
+});
+
