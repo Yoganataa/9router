@@ -203,6 +203,19 @@ describe("OpenCode Zen free-tier routing and v2 fingerprint", () => {
     expect(options.headers["x-session-id"]).toBe(options.headers["x-opencode-session"]);
   });
 
+  it("keeps paid Jev System One requests on Zen with the configured key", async () => {
+    await handleSystemoneCore({
+      modelInfo: { provider: "opencode-zen", model: "jev-1.13" },
+      body: { model: "jev-1.13", state: {}, questions: { q1: "answer this" } },
+      credentials: { apiKey: "oc_sk_paid_test_key", rawHeaders: {} },
+    });
+
+    expect(nativeFetchMock).toHaveBeenCalledOnce();
+    const [url, options] = nativeFetchMock.mock.calls[0];
+    expect(url).toBe("https://opencode.ai/zen/v1/systemone");
+    expect(options.headers.Authorization).toBe("Bearer oc_sk_paid_test_key");
+  });
+
   it("injects fingerprint read/shell tools into chat and Responses payloads", () => {
     const executor = new OpenCodeZenExecutor();
     const chat = executor.transformRequest("mimo-v2.6-flash-free", {
