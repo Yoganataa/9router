@@ -15,7 +15,7 @@ export default {
   transport: {
     baseUrl: "https://opencode.ai",
     headers: {
-      "x-opencode-client": "desktop",
+      "x-opencode-client": "cli",
     },
     forceStream: true,
     noAuth: true,
@@ -39,7 +39,7 @@ export default {
   systemoneConfig: {
     baseUrl: "https://opencode.ai/inference/v1/systemone",
     headers: {
-      "x-opencode-client": "desktop",
+      "x-opencode-client": "cli",
       "User-Agent": "opencode/latest/2.0.29/cli",
     },
   },
