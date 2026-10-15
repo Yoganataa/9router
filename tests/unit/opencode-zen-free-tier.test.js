@@ -79,6 +79,14 @@ describe("OpenCode Zen free-tier routing and v2 fingerprint", () => {
   it("uses Bearer public and v2 session headers for free-tier chat requests", () => {
     const headers = headersFor("mimo-v2.6-flash-free", {
       rawHeaders: { "x-opencode-request": "msg_0ae8d9cd3001swxaFbM248jcIF" },
+      // Simulate a downstream/runtime header overlay so this test verifies
+      // that free-tier requests actively remove legacy v1-only headers.
+      runtimeTransport: {
+        headers: {
+          "x-api-key": "legacy-api-key",
+          "x-opencode-request": "msg_legacy_request_id",
+        },
+      },
     });
 
     expect(headers.Authorization).toBe("Bearer public");
@@ -106,9 +114,12 @@ describe("OpenCode Zen free-tier routing and v2 fingerprint", () => {
     expect(headers["x-opencode-request"]).toBeUndefined();
   });
 
-  it("retains the configured API key for paid models", () => {
-    const headers = headersFor("kimi-k3");
+  it("retains the configured API key and non-free header behavior for paid models", () => {
+    const headers = headersFor("kimi-k3", {
+      runtimeTransport: { headers: { "x-api-key": "paid-custom-header" } },
+    });
     expect(headers.Authorization).toBe("Bearer oc_sk_test_key");
+    expect(headers["x-api-key"]).toBe("paid-custom-header");
     expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
   });
 
