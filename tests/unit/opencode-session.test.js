@@ -492,9 +492,13 @@ describe("OpenCode Zen free-tier routing and auth regression", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toBe("https://opencode.ai/inference/v1/chat/completions");
-    expect(options.headers.Authorization).toBe("Bearer public");
+    const authorizationKeys = Object.keys(options.headers).filter(
+      (key) => key.toLowerCase() === "authorization",
+    );
+    expect(authorizationKeys).toHaveLength(1);
+    expect(options.headers[authorizationKeys[0]]).toBe("Bearer public");
     for (const key of Object.keys(options.headers)) {
-      expect(["authorization", "x-api-key", "x-opencode-request"]).not.toContain(key.toLowerCase());
+      expect(["x-api-key", "x-opencode-request"]).not.toContain(key.toLowerCase());
     }
     expect(options.headers["X-Debug-Trace"]).toBe("preserve-me");
   });
