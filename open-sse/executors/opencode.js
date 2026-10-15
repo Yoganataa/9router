@@ -377,6 +377,51 @@ export class OpenCodeExecutor extends BaseExecutor {
     return super.execute({ ...args, credentials: this.prepareRequestCredentials(args) });
   }
 
+  // OpenCode Zen occasionally returns a transient 429 with this exact message
+  // even when the account/model is usable. Retry only that gateway failure;
+  // actual quota/rate-limit responses are returned to the client untouched.
+  async computeRetryDelay(response, attempt, fallbackDelayMs) {
+    if (response?.status !== 429) return null;
+
+    let payload;
+    try {
+      payload = await response.clone().json();
+    } catch {
+      return false;
+    }
+
+    const message = payload?.error?.message || payload?.message || "";
+    if (!/upstream request failed:\\s*endpoint is unavailable/i.test(String(message))) {
+      return false;
+    }
+
+    const retryAfterMs = response.headers?.get?.("retry-after-ms");
+    const retryAfter = response.headers?.get?.("retry-after");
+    let requestedDelayMs = null;
+
+    if (retryAfterMs != null && retryAfterMs.trim() !== "") {
+      const value = Number(retryAfterMs);
+      if (Number.isFinite(value) && value >= 0) requestedDelayMs = value;
+    } else if (retryAfter != null && retryAfter.trim() !== "") {
+      const seconds = Number(retryAfter);
+      if (Number.isFinite(seconds) && seconds >= 0) {
+        requestedDelayMs = seconds * 1000;
+      } else {
+        const dateMs = Date.parse(retryAfter);
+        if (Number.isFinite(dateMs)) requestedDelayMs = Math.max(0, dateMs - Date.now());
+      }
+    }
+
+    // Do not sleep for an unbounded server-requested delay inside the proxy.
+    if (requestedDelayMs != null) {
+      if (requestedDelayMs > 30000) return false;
+      if (requestedDelayMs > 0) return requestedDelayMs;
+    }
+
+    // 2s, 4s, 8s, 12s (capped): 26s total across four retries.
+    return Math.min(fallbackDelayMs * (2 ** Math.max(0, attempt - 1)), 12000);
+  }
+
   // Free tier moved from /zen/v1 to /inference/v1 (OpenCode v2); /zen/v1 now
   // answers every free request with 403 FreeTierError.
   buildUrl(model) {
