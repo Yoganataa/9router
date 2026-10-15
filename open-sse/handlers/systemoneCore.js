@@ -2,6 +2,7 @@ import { createErrorResult, parseUpstreamError, formatProviderError } from "../u
 import { HTTP_STATUS, FETCH_CONNECT_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { PROVIDER_MEDIA } from "../providers/index.js";
 import { getModelUpstreamId } from "../config/providerModels.js";
+import { isOpencodeFreeTierModel } from "../providers/models/helpers.js";
 import { generateSessionId } from "../executors/opencode-zen.js";
 
 /**
@@ -21,6 +22,8 @@ export async function handleSystemoneCore({
   const { provider, model } = modelInfo;
   const cfg = PROVIDER_MEDIA[provider]?.systemoneConfig;
   let targetUrl = credentials?.providerSpecificData?.baseUrl || cfg?.baseUrl;
+  const isOpenCodeProvider = provider === "opencode" || provider === "opencode-zen";
+  const isOpenCodeFreeTier = isOpenCodeProvider && isOpencodeFreeTierModel(model);
   if (!targetUrl) {
     return createErrorResult(
       HTTP_STATUS.BAD_REQUEST,
@@ -41,6 +44,10 @@ export async function handleSystemoneCore({
   if (targetUrl.includes("{model}")) {
     targetUrl = targetUrl.replace(/\{model\}/g, model);
   }
+  // System One bypasses OpenCodeZenExecutor, so route its free Jev model here.
+  if (isOpenCodeFreeTier && provider === "opencode-zen") {
+    targetUrl = targetUrl.replace("/zen/v1/systemone", "/inference/v1/systemone");
+  }
 
   // Validate input at the trust boundary; question-level shape is upstream's job.
   if (body.state === undefined || body.state === null) {
@@ -51,16 +58,29 @@ export async function handleSystemoneCore({
   }
 
   // noAuth free lanes carry accessToken "public" from the credential stub.
-  const token = credentials?.apiKey || credentials?.accessToken;
+  // Keyed OpenCode Zen also exposes free models; those must use the public
+  // identity on /inference/v1 rather than the configured Zen API key.
+  const token = isOpenCodeFreeTier ? "public" : (credentials?.apiKey || credentials?.accessToken);
   const session = generateSessionId();
   const headers = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(cfg.headers || {}),
-    // Zen lanes expect the official client session header on every request.
+    // Preserve the pre-existing session headers for native System One providers.
     "x-opencode-session": session,
     "x-opencode-session-id": session,
   };
+  if (isOpenCodeProvider) {
+    headers["x-opencode-project"] = "global";
+    headers["x-session-affinity"] = session;
+    headers["x-session-id"] = session;
+  }
+  if (isOpenCodeFreeTier) {
+    headers.Authorization = "Bearer public";
+    for (const key of Object.keys(headers)) {
+      if (["x-api-key", "x-opencode-request"].includes(key.toLowerCase())) delete headers[key];
+    }
+  }
   // Cloudflare validates the body model as a short selector (e.g. "clef-flash"), not the full id.
   const requestBody = { ...body, model: getModelUpstreamId(provider, model) || model };
 

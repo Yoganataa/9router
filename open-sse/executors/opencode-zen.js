@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
-import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { isMuseSparkModel, isOpencodeFreeTierModel } from "../providers/models/helpers.js";
 import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
 import {
   normalizeResponsesInput,
@@ -15,6 +15,8 @@ const SESSION_FIELD = "_opencodeZenSession";
 const MAX_SESSION_LENGTH = 256;
 
 const RESPONSES_BASE_URL = "https://opencode.ai/zen/v1/responses";
+const FREE_RESPONSES_BASE_URL = "https://opencode.ai/inference/v1/responses";
+const FREE_CHAT_BASE_URL = "https://opencode.ai/inference/v1/chat/completions";
 const MAX_TOOL_NAME_LEN = 128;
 const OPENCODE_UA = "opencode/latest/2.0.29/cli";
 const OPENCODE_CLIENT = "cli";
@@ -180,6 +182,10 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
   }
 
   buildUrl(model, stream, urlIndex = 0, credentials = null) {
+    // OpenCode v2 free-tier models use the attested inference endpoint, not /zen/v1.
+    if (isOpencodeFreeTierModel(model)) {
+      return isResponsesModel(model) ? FREE_RESPONSES_BASE_URL : FREE_CHAT_BASE_URL;
+    }
     // Muse Spark lives on /responses even when a stale runtimeTransport leaks in.
     if (isResponsesModel(model)) return RESPONSES_BASE_URL;
     return super.buildUrl(model, stream, urlIndex, credentials);
@@ -203,7 +209,23 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
 
   async execute(args) {
     const credentials = this.prepareRequestCredentials(args);
-    return super.execute({ ...args, credentials });
+    let providerOverrides = args?.providerOverrides;
+
+    // BaseExecutor merges per-provider header overrides after buildHeaders().
+    // Sanitize that second source too, or it could reintroduce credentials/legacy
+    // request IDs which the OpenCode free-tier attestation rejects.
+    if (isOpencodeFreeTierModel(args?.model) && providerOverrides?.headers) {
+      const overrideHeaders = { ...providerOverrides.headers };
+      for (const key of Object.keys(overrideHeaders)) {
+        if (["authorization", "x-api-key", "x-opencode-request"].includes(key.toLowerCase())) {
+          delete overrideHeaders[key];
+        }
+      }
+      overrideHeaders.Authorization = "Bearer public";
+      providerOverrides = { ...providerOverrides, headers: overrideHeaders };
+    }
+
+    return super.execute({ ...args, credentials, providerOverrides });
   }
 
   buildHeaders(credentials, stream = true, url, model) {
@@ -222,6 +244,13 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     headers["x-opencode-session-id"] = session;
     headers["x-session-affinity"] = session;
     headers["x-session-id"] = session;
+    if (isOpencodeFreeTierModel(model)) {
+      // The v2 free-tier lane only accepts the public identity. Sending a real Zen
+      // key or the v1 request-id header fails the free-tier attestation gate.
+      headers["Authorization"] = "Bearer public";
+      delete headers["x-api-key"];
+      delete headers["x-opencode-request"];
+    }
     return headers;
   }
 

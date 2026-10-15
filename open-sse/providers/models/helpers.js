@@ -37,6 +37,16 @@ export function isDeepSeekModel(modelId) {
   return /^deepseek-/i.test(base);
 }
 
+// Most OpenCode free-tier ids carry a "-free" suffix. Big Pickle is the
+// documented exception: it is temporarily free but keeps the bare "big-pickle" id.
+// Strip provider aliases and thinking overrides before applying either rule.
+export function isOpencodeFreeTierModel(modelId) {
+  if (!modelId || typeof modelId !== "string") return false;
+  const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const base = clean.includes("/") ? clean.split("/").pop() : clean;
+  return /-free$/i.test(base) || /^big-pickle$/i.test(base);
+}
+
 // Endpoint families for OpenCode models outside the curated registry (modelsFetcher /
 // passthrough ids) — regex keeps auto-fetched models on the right endpoint:
 // /responses (gpt/grok/muse-spark), /messages (minimax/qwen), /chat/completions (rest).
@@ -50,6 +60,7 @@ const OPENCODE_FAMILIES = [
 
 export function opencodeFamilyFormats(modelId) {
   if (!modelId || typeof modelId !== "string") return null;
-  const base = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const clean = modelId.replace(/\([^()]+\)\s*$/, "").trim();
+  const base = clean.includes("/") ? clean.split("/").pop() : clean;
   return OPENCODE_FAMILIES.find((f) => f.match.test(base)) || null;
 }
