@@ -4,6 +4,12 @@ import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
 
+function booleanEnv(name, fallback = false) {
+  const value = process.env[name];
+  if (value == null || value === "") return fallback;
+  return /^(1|true|yes|on)$/i.test(String(value).trim());
+}
+
 const DEFAULT_SETTINGS = {
   cloudEnabled: false,
   tunnelEnabled: false,
@@ -50,10 +56,12 @@ const DEFAULT_SETTINGS = {
   mitmRouterBaseUrl: DEFAULT_MITM_ROUTER_BASE,
   dnsToolEnabled: {},
   rtkEnabled: true,
-  headroomEnabled: false,
+  headroomEnabled: booleanEnv("HEADROOM_DEFAULT_ENABLED", false),
   headroomUrl: DEFAULT_HEADROOM_URL,
-  headroomCompressUserMessages: false,
+  headroomCompressUserMessages: booleanEnv("HEADROOM_DEFAULT_COMPRESS_USER_MESSAGES", false),
   headroomTimeoutMs: 3000,
+  headroomCodeAware: booleanEnv("HEADROOM_DEFAULT_CODE_AWARE", false),
+  headroomKompress: booleanEnv("HEADROOM_DEFAULT_KOMPRESS", true),
   cavemanEnabled: false,
   cavemanLevel: "full",
   ponytailEnabled: false,
