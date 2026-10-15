@@ -29,6 +29,7 @@ describe("isOpencodeFreeTierModel", () => {
     for (const model of [
       "mimo-v2.6-flash-free",
       "muse-spark-1.3-contributor-free",
+      "big-pickle",
       "big-pickle-free",
       "deepseek-v4-flash-free",
       "jev-1.13-free",
@@ -38,7 +39,7 @@ describe("isOpencodeFreeTierModel", () => {
   });
 
   it("does not misclassify paid models", () => {
-    for (const model of ["big-pickle", "muse-spark-1.3", "gpt-5.5", "claude-opus-5", "kimi-k3"]) {
+    for (const model of ["muse-spark-1.3", "gpt-5.5", "claude-opus-5", "kimi-k3"]) {
       expect(isOpencodeFreeTierModel(model)).toBe(false);
     }
   });
@@ -47,7 +48,8 @@ describe("isOpencodeFreeTierModel", () => {
     expect(isOpencodeFreeTierModel("mimo-v2.6-flash-free(xhigh)")).toBe(true);
     expect(isOpencodeFreeTierModel("muse-spark-1.3-contributor-free(1m)")).toBe(true);
     expect(isOpencodeFreeTierModel("ocfree/mimo-v2.6-flash-free")).toBe(true);
-    expect(isOpencodeFreeTierModel("big-pickle(max)")).toBe(false);
+    expect(isOpencodeFreeTierModel("big-pickle(max)")).toBe(true);
+    expect(isOpencodeFreeTierModel("kimi-k3(max)")).toBe(false);
     expect(isOpencodeFreeTierModel("")).toBe(false);
     expect(isOpencodeFreeTierModel(null)).toBe(false);
   });
@@ -64,6 +66,9 @@ describe("OpenCode Zen free-tier routing and v2 fingerprint", () => {
       "https://opencode.ai/inference/v1/responses",
     );
     expect(executor.buildUrl("big-pickle", true)).toBe(
+      "https://opencode.ai/inference/v1/chat/completions",
+    );
+    expect(executor.buildUrl("kimi-k3", true)).toBe(
       "https://opencode.ai/zen/v1/chat/completions",
     );
     expect(executor.buildUrl("muse-spark-1.3", true)).toBe(
@@ -95,8 +100,14 @@ describe("OpenCode Zen free-tier routing and v2 fingerprint", () => {
     expect(headers["User-Agent"]).toBe("opencode/latest/2.0.29/cli");
   });
 
-  it("retains the configured API key for paid models", () => {
+  it("uses the free-tier auth policy for Big Pickle despite its bare model id", () => {
     const headers = headersFor("big-pickle");
+    expect(headers.Authorization).toBe("Bearer public");
+    expect(headers["x-opencode-request"]).toBeUndefined();
+  });
+
+  it("retains the configured API key for paid models", () => {
+    const headers = headersFor("kimi-k3");
     expect(headers.Authorization).toBe("Bearer oc_sk_test_key");
     expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
   });
