@@ -10,6 +10,7 @@ on:
       - "src/**"
       - "app/**"
       - "scripts/**"
+      - "tests/unit/opencode-session.test.js"
       - "package.json"
       - ".github/workflows/build-patched-cli-release.yml"
 
@@ -83,7 +84,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Fixes OpenCode v2 inference compatibility and retries transient endpoint availability errors."
+          NOTES="Fixes OpenCode v2 inference compatibility, Zen free-tier routing and authentication, Jev System One routing, and retries transient endpoint availability errors."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
