@@ -379,6 +379,28 @@ export class OpenCodeExecutor extends BaseExecutor {
 
   // Free tier moved from /zen/v1 to /inference/v1 (OpenCode v2); /zen/v1 now
   // answers every free request with 403 FreeTierError.
+  async computeRetryDelay(response, retryNumber, defaultDelayMs) {
+    if (response?.status !== HTTP_STATUS.RATE_LIMITED) return undefined;
+
+    let bodyText = "";
+    try {
+      bodyText = await response.clone().text();
+    } catch {
+      return false;
+    }
+
+    // Retry only this confirmed transient gateway error, not genuine quota/rate limits.
+    if (!/Endpoint is unavailable/i.test(bodyText)) return false;
+
+    // The response will not be sent downstream when retrying.
+    try {
+      await response.body?.cancel();
+    } catch {}
+
+    // 2s, 4s, then cap at 8s; bounded to five retries by the registry policy.
+    return Math.min(2_000 * (2 ** Math.max(0, retryNumber - 1)), 8_000);
+  }
+
   buildUrl(model) {
     const base = this.config.baseUrl;
     if (isResponsesModel(model)) return `${base}/inference/v1/responses`;

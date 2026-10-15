@@ -19,6 +19,11 @@ export default {
     },
     forceStream: true,
     noAuth: true,
+    // Recover from transient OpenCode gateway 429s internally; OpenCodeExecutor
+    // vetoes retries unless the response says "Endpoint is unavailable".
+    retry: {
+      429: { attempts: 5, delayMs: 2000 },
+    },
     quirks: {
       forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
     },
