@@ -78,18 +78,12 @@ export async function PATCH(request) {
 
     const settings = await updateSettings(body);
 
-    // Starting or reconfiguring an enabled token saver should trigger the
-    // same idempotent Headroom bootstrap used during server startup. This
-    // handles existing databases that were previously saved with Headroom off.
-    const headroomSettingChanged = [
-      "headroomEnabled",
-      "headroomCodeAware",
-      "headroomKompress",
-      "headroomCompressUserMessages",
-    ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
-    if (settings.headroomEnabled === true && headroomSettingChanged) {
+    // Enabling Headroom in settings also starts the managed service. Force
+    // one serialized reconciliation so a startup run that began with older
+    // saved settings is followed by a run using the newly saved configuration.
+    if (settings.headroomEnabled === true && body.headroomEnabled === true) {
       import("@/lib/headroom/bootstrap.js")
-        .then(({ bootstrapHeadroom }) => bootstrapHeadroom())
+        .then(({ bootstrapHeadroom }) => bootstrapHeadroom({ force: true }))
         .catch((error) => console.warn("[Headroom] settings-triggered bootstrap failed:", error.message));
     }
 
