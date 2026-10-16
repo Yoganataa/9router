@@ -141,6 +141,38 @@ describe("Headroom proxy process management", () => {
     }
   });
 
+  it("clears a reused PID record without terminating an unrelated process", async () => {
+    const stalePid = 55555;
+    const pidDir = path.join(tempDir, "headroom");
+    fs.mkdirSync(pidDir, { recursive: true });
+    fs.writeFileSync(path.join(pidDir, "proxy.pid"), String(stalePid));
+    mocks.execFileSync.mockReturnValue("python unrelated_service.py");
+
+    const originalKill = process.kill.bind(process);
+    const killSpy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (Number(pid) === stalePid) {
+        if (signal === 0) return true;
+        return true;
+      }
+      return originalKill(pid, signal);
+    });
+
+    try {
+      fakeChild(process.pid);
+      mocks.probeProxyRunning.mockResolvedValueOnce(false).mockResolvedValue(true);
+
+      const { startHeadroomProxy } = await import("../../src/lib/headroom/process.js");
+      const result = await startHeadroomProxy({ port: 8787, codeAware: true, kompress: false });
+
+      expect(result.healthy).toBe(true);
+      expect(killSpy).not.toHaveBeenCalledWith(stalePid, "SIGTERM");
+      expect(killSpy).not.toHaveBeenCalledWith(stalePid, "SIGKILL");
+      expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    } finally {
+      killSpy.mockRestore();
+    }
+  });
+
   it("passes the configured compression flags to the proxy process", async () => {
     fakeChild(process.pid);
     mocks.probeProxyRunning.mockResolvedValueOnce(false).mockResolvedValue(true);
