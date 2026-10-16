@@ -252,19 +252,40 @@ export default function TokenSaverClient() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Install failed");
+      const installedExtras = data.extras || {};
       setHeadroomExtras((s) => ({
         ...s,
         version: data.version ?? s.version,
-        extras: data.extras || s.extras,
+        extras: installedExtras.extras || installedExtras || s.extras,
       }));
       setPendingExtras([]);
+
+      // Apply newly installed extras immediately. A proxy that was running in
+      // degraded mode may have --disable-kompress set, or Code-Aware disabled.
+      const activatesInstalledExtra =
+        (pendingExtras.includes("code") && codeAware && installedExtras.code === true)
+        || (pendingExtras.includes("ml") && kompress && installedExtras.ml === true);
+      if (headroomEnabled && headroomLocalUrl) {
+        const endpoint = headroomStatus.running
+          ? (activatesInstalledExtra ? "/api/headroom/restart" : null)
+          : "/api/headroom/start";
+        if (endpoint) {
+          const startRes = await fetch(endpoint, { method: "POST" });
+          const startData = await startRes.json().catch(() => ({}));
+          if (!startRes.ok) {
+            throw new Error(`Extra installed, but Headroom could not be activated: ${startData.error || "proxy start/restart failed"}`);
+          }
+        }
+      }
+      await refreshHeadroomStatus();
     } catch (e) {
       setExtrasActionError(e.message);
+      await refreshHeadroomStatus();
     } finally {
       stopLogPolling();
       setExtrasActionLoading(false);
     }
-  }, [pendingExtras, startLogPolling, stopLogPolling]);
+  }, [pendingExtras, startLogPolling, stopLogPolling, headroomEnabled, headroomLocalUrl, headroomStatus.running, codeAware, kompress, refreshHeadroomStatus]);
 
   const removeExtraConfirmed = useCallback(async (extra) => {
     setRemovingExtra(extra);
