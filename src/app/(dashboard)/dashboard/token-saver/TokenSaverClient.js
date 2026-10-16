@@ -543,7 +543,7 @@ export default function TokenSaverClient() {
             </p>
             {headroomStatus.bootstrap?.status === "degraded" && (
               <p className="text-xs text-warning mt-1" role="status">
-                Proxy is running, but some compression extras are unavailable
+                Proxy is running, but full feature setup is not verified
                 {headroomStatus.bootstrap.missingExtras?.length
                   ? ` (${headroomStatus.bootstrap.missingExtras.join(", ")}).`
                   : "."}
