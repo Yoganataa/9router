@@ -16,6 +16,8 @@ on:
       - "tests/unit/headroom-detect.test.js"
       - "tests/unit/headroom-process.test.js"
       - "tests/unit/configured-api-key.test.js"
+      - "tests/unit/headroom-bootstrap.test.js"
+      - "tests/unit/token-saver-defaults.test.js"
       - "package.json"
       - ".github/workflows/build-patched-cli-release.yml"
 
@@ -61,7 +63,9 @@ jobs:
             tests/unit/opencode-go-session.test.js \
             tests/unit/headroom-detect.test.js \
             tests/unit/headroom-process.test.js \
-            tests/unit/configured-api-key.test.js
+            tests/unit/configured-api-key.test.js \
+            tests/unit/headroom-bootstrap.test.js \
+            tests/unit/token-saver-defaults.test.js
 
       - name: Build CLI package
         env:
@@ -93,7 +97,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Fixes OpenCode compatibility, stabilizes Headroom proxy startup and extra verification, and supports configured API-key bootstrap."
+          NOTES="Sets up full token-saving defaults, bootstraps Headroom with Code-Aware and ML extras, improves proxy health detection, and supports configured API-key bootstrap."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
