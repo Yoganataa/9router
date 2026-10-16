@@ -107,6 +107,9 @@ export function findHeadroomBinary() {
 // binary (guaranteed to have headroom-ai), then full paths from EXTRA_BINS, then
 // bare names resolved via PATH.
 function pythonCandidates() {
+  // A release bundle has a known ABI target; avoid probing every system path at startup.
+  if (findBundledHeadroomDir()) return ["python3.12", "python3", "python"];
+
   const list = [];
   const bin = findHeadroomBinary();
   if (bin) {
