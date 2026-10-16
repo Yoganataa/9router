@@ -265,7 +265,7 @@ export default function TokenSaverClient() {
       const activatesInstalledExtra =
         (pendingExtras.includes("code") && codeAware && installedExtras.code === true)
         || (pendingExtras.includes("ml") && kompress && installedExtras.ml === true);
-      if (headroomEnabled && headroomLocalUrl) {
+      if (headroomEnabled && headroomStatus.localUrl !== false) {
         const endpoint = headroomStatus.running
           ? (activatesInstalledExtra ? "/api/headroom/restart" : null)
           : "/api/headroom/start";
@@ -285,7 +285,7 @@ export default function TokenSaverClient() {
       stopLogPolling();
       setExtrasActionLoading(false);
     }
-  }, [pendingExtras, startLogPolling, stopLogPolling, headroomEnabled, headroomLocalUrl, headroomStatus.running, codeAware, kompress, refreshHeadroomStatus]);
+  }, [pendingExtras, startLogPolling, stopLogPolling, headroomEnabled, headroomStatus.localUrl, headroomStatus.running, codeAware, kompress, refreshHeadroomStatus]);
 
   const removeExtraConfirmed = useCallback(async (extra) => {
     setRemovingExtra(extra);
