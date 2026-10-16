@@ -10,5 +10,10 @@ export async function register() {
 
     const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
     startModelCatalogSync();
+
+    // Full token-saver setup runs in the background so an optional package
+    // install never blocks the HTTP server from becoming available.
+    const { bootstrapHeadroom } = await import("@/lib/headroom/bootstrap.js");
+    void bootstrapHeadroom();
   }
 }
