@@ -139,4 +139,28 @@ describe("Headroom first-run bootstrap", () => {
     expect(mocks.startHeadroomProxy).not.toHaveBeenCalled();
     expect(result).toMatchObject({ skipped: true });
   });
+
+  it("retries after Headroom was disabled at boot and later enabled in settings", async () => {
+    mocks.getSettings
+      .mockResolvedValueOnce({ headroomEnabled: false })
+      .mockResolvedValue({
+        headroomEnabled: true,
+        headroomUrl: "http://localhost:8787",
+        headroomCodeAware: true,
+        headroomKompress: true,
+      });
+
+    const first = await bootstrapHeadroom();
+    expect(first).toMatchObject({ skipped: true, reason: "Headroom is disabled in settings" });
+    await Promise.resolve();
+
+    const second = await bootstrapHeadroom();
+
+    expect(mocks.startHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: true,
+      kompress: true,
+    });
+    expect(second).toMatchObject({ started: true, healthy: true });
+  });
 });
