@@ -101,7 +101,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Improves Headroom startup when optional extras fail, exposes degraded setup diagnostics, and avoids false compression warnings when large tool schemas dominate the payload."
+          NOTES="Adds payload-aware Headroom timeouts, safely recovers unhealthy managed proxy processes, and preserves compression when ML is disabled."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
