@@ -340,7 +340,7 @@ describe("compressWithHeadroom", () => {
 
       await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", timeoutMs: null });
 
-      expect(calls).toContain(3000);
+      expect(calls).toContain(10000);
     });
 
     it("falls back to the default timeout when timeoutMs is 0", async () => {
@@ -350,7 +350,7 @@ describe("compressWithHeadroom", () => {
 
       await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", timeoutMs: 0 });
 
-      expect(calls).toContain(3000);
+      expect(calls).toContain(10000);
     });
 
     it("falls back to the default timeout when timeoutMs is negative", async () => {
@@ -360,7 +360,7 @@ describe("compressWithHeadroom", () => {
 
       await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", timeoutMs: -100 });
 
-      expect(calls).toContain(3000);
+      expect(calls).toContain(10000);
     });
 
     it("falls back to the default timeout when timeoutMs is NaN", async () => {
@@ -370,7 +370,7 @@ describe("compressWithHeadroom", () => {
 
       await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", timeoutMs: NaN });
 
-      expect(calls).toContain(3000);
+      expect(calls).toContain(10000);
     });
 
     it("falls back to the default timeout when timeoutMs is Infinity", async () => {
@@ -380,7 +380,7 @@ describe("compressWithHeadroom", () => {
 
       await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", timeoutMs: Infinity });
 
-      expect(calls).toContain(3000);
+      expect(calls).toContain(10000);
     });
 
     it("falls back to the default timeout when timeoutMs is a string", async () => {
@@ -390,7 +390,7 @@ describe("compressWithHeadroom", () => {
 
       await compressWithHeadroom(body, { enabled: true, url: "http://localhost:8787", timeoutMs: "5000" });
 
-      expect(calls).toContain(3000);
+      expect(calls).toContain(10000);
     });
   });
 });
