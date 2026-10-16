@@ -231,11 +231,8 @@ export async function installHeadroomExtras(extras = []) {
     err.code = "NO_PYTHON";
     throw err;
   }
-  if (!findHeadroomBinary()) {
-    const err = new Error("headroom-ai not installed (run `pip install headroom-ai[proxy]` first)");
-    err.code = "NOT_INSTALLED";
-    throw err;
-  }
+  // This installer is also used during first-run bootstrap, before the
+  // Headroom CLI exists. findPython310() selects the interpreter to install it into.
   // pip install string is built from a closed set (HEADROOM_COMPRESSION_EXTRAS),
   // so it cannot be poisoned by caller input — the comma-list is a fixed
   // ['proxy', ...requested]. No shell interpolation.
