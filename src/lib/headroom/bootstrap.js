@@ -178,9 +178,36 @@ export function bootstrapHeadroom({ force = false } = {}) {
     return globalThis.__ninerouterHeadroomBootstrapQueued;
   }
 
+  globalThis.__ninerouterHeadroomBootstrapState = {
+    status: "starting",
+    startedAt: Date.now(),
+    missingExtras: [],
+    warning: null,
+  };
   const pending = runBootstrap().catch((error) => {
-    console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", error?.message || String(error));
-    return { started: false, error: error?.message || String(error) };
+    const message = error?.message || String(error);
+    console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", message);
+    return { started: false, error: message };
+  }).then((result) => {
+    const missingExtras = Array.isArray(result?.missingExtras) ? result.missingExtras : [];
+    const status = result?.error
+      ? "error"
+      : result?.skipped
+        ? "skipped"
+        : missingExtras.length || result?.warning
+          ? "degraded"
+          : result?.started
+            ? "ready"
+            : "stopped";
+    globalThis.__ninerouterHeadroomBootstrapState = {
+      status,
+      updatedAt: Date.now(),
+      missingExtras,
+      warning: result?.warning || result?.error || null,
+      version: result?.version || null,
+      extras: result?.extras || null,
+    };
+    return result;
   });
   globalThis.__ninerouterHeadroomBootstrap = pending;
 
