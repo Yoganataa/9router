@@ -163,4 +163,41 @@ describe("Headroom first-run bootstrap", () => {
     });
     expect(second).toMatchObject({ started: true, healthy: true });
   });
+
+  it("queues changed settings behind an in-flight bootstrap instead of racing installs", async () => {
+    mocks.getSettings
+      .mockResolvedValueOnce({
+        headroomEnabled: true,
+        headroomUrl: "http://localhost:8787",
+        headroomCodeAware: false,
+        headroomKompress: false,
+      })
+      .mockResolvedValue({
+        headroomEnabled: true,
+        headroomUrl: "http://localhost:8787",
+        headroomCodeAware: true,
+        headroomKompress: true,
+      });
+    mocks.probeProxyRunning
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    mocks.getManagedPid.mockReturnValue(2468);
+
+    const first = bootstrapHeadroom();
+    const queued = bootstrapHeadroom({ force: true });
+    const [firstResult, queuedResult] = await Promise.all([first, queued]);
+
+    expect(mocks.startHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: false,
+      kompress: false,
+    });
+    expect(mocks.restartHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: true,
+      kompress: true,
+    });
+    expect(firstResult).toMatchObject({ started: true });
+    expect(queuedResult).toMatchObject({ started: true, restarted: true });
+  });
 });
