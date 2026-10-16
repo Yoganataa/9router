@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
+  execFileSync: vi.fn(() => "/usr/local/bin/headroom proxy --port 8787 --code-aware"),
   findHeadroomBinary: vi.fn(() => "/usr/local/bin/headroom"),
   probeProxyRunning: vi.fn(),
   findPython310: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("child_process", () => ({
   spawn: mocks.spawn,
+  execFileSync: mocks.execFileSync,
 }));
 
 vi.mock("../../src/lib/headroom/detect.js", () => ({
@@ -32,6 +34,7 @@ beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-headroom-process-"));
   process.env.DATA_DIR = tempDir;
   mocks.spawn.mockReset();
+  mocks.execFileSync.mockReset().mockReturnValue("/usr/local/bin/headroom proxy --port 8787 --code-aware");
   mocks.findHeadroomBinary.mockReset().mockReturnValue("/usr/local/bin/headroom");
   mocks.probeProxyRunning.mockReset();
   mocks.findPython310.mockReset();
@@ -92,6 +95,50 @@ describe("Headroom proxy process management", () => {
       ["proxy", "--port", "8787", "--code-aware"],
       expect.objectContaining({ detached: true, windowsHide: true })
     );
+  });
+
+  it("recovers a live but unhealthy managed proxy without killing unrelated processes", async () => {
+    const stalePid = 55555;
+    const pidDir = path.join(tempDir, "headroom");
+    fs.mkdirSync(pidDir, { recursive: true });
+    fs.writeFileSync(path.join(pidDir, "proxy.pid"), String(stalePid));
+
+    let staleAlive = true;
+    const originalKill = process.kill.bind(process);
+    const killSpy = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+      if (Number(pid) === stalePid) {
+        if (signal === 0) {
+          if (staleAlive) return true;
+          const error = new Error("Process no longer exists");
+          error.code = "ESRCH";
+          throw error;
+        }
+        if (signal === "SIGTERM" || signal === "SIGKILL") {
+          staleAlive = false;
+          return true;
+        }
+      }
+      return originalKill(pid, signal);
+    });
+
+    try {
+      fakeChild(process.pid);
+      mocks.probeProxyRunning.mockResolvedValueOnce(false).mockResolvedValue(true);
+
+      const { startHeadroomProxy } = await import("../../src/lib/headroom/process.js");
+      const result = await startHeadroomProxy({ port: 8787, codeAware: true, kompress: false });
+
+      expect(result.healthy).toBe(true);
+      expect(staleAlive).toBe(false);
+      expect(killSpy).toHaveBeenCalledWith(stalePid, "SIGTERM");
+      expect(mocks.spawn).toHaveBeenCalledWith(
+        "/usr/local/bin/headroom",
+        ["proxy", "--port", "8787", "--code-aware", "--disable-kompress"],
+        expect.any(Object)
+      );
+    } finally {
+      killSpy.mockRestore();
+    }
   });
 
   it("passes the configured compression flags to the proxy process", async () => {
