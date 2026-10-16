@@ -41,6 +41,7 @@ const fullExtras = {
 
 beforeEach(() => {
   delete globalThis.__ninerouterHeadroomBootstrap;
+  delete globalThis.__ninerouterHeadroomBootstrapQueued;
   vi.clearAllMocks();
   delete process.env.HEADROOM_AUTO_SETUP;
   mocks.getSettings.mockResolvedValue({
