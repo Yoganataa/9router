@@ -17,6 +17,23 @@ describe("compressWithHeadroom", () => {
     expect(body.messages[0].content).toBe("hello");
   });
 
+  it("uses a 15-second default timeout for Headroom compression", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({
+      messages: [{ role: "user", content: "short" }],
+      tokens_before: 100,
+      tokens_after: 20,
+      tokens_saved: 80,
+    }), { status: 200 }));
+
+    await compressWithHeadroom(
+      { messages: [{ role: "user", content: "large context" }] },
+      { enabled: true, url: "http://headroom:8787", model: "gpt-4o" }
+    );
+
+    expect(timeoutSpy).toHaveBeenCalledWith(15000);
+  });
+
   it("compresses messages in-place", async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({
       messages: [{ role: "user", content: "short" }],
