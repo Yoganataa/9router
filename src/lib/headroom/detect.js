@@ -1,3 +1,4 @@
+import fs from "fs";
 import { execFileSync, execSync } from "child_process";
 import path from "path";
 
@@ -40,6 +41,37 @@ const EXTRA_BINS = IS_WIN
       "/bin",
     ];
 
+function bundledHeadroomCandidates() {
+  const executable = process.argv[1] ? path.dirname(path.resolve(process.argv[1])) : "";
+  return [
+    process.env.NINEROUTER_HEADROOM_BUNDLE_DIR,
+    process.env.HEADROOM_BUNDLE_DIR,
+    executable && path.join(executable, "headroom-runtime"),
+    process.cwd() && path.join(process.cwd(), "headroom-runtime"),
+    process.cwd() && path.join(process.cwd(), "app", "headroom-runtime"),
+    process.cwd() && path.join(process.cwd(), "package", "app", "headroom-runtime"),
+  ].filter(Boolean);
+}
+
+export function findBundledHeadroomDir() {
+  return bundledHeadroomCandidates().find((dir) =>
+    fs.existsSync(path.join(dir, "bin", "headroom"))
+    && fs.existsSync(path.join(dir, "site-packages"))
+  ) || null;
+}
+
+function headroomRuntimeEnv() {
+  const bundleDir = findBundledHeadroomDir();
+  const bundleBins = bundleDir ? [path.join(bundleDir, "bin")] : [];
+  const bundlePackages = bundleDir ? path.join(bundleDir, "site-packages") : "";
+  const pythonPath = [bundlePackages, process.env.PYTHONPATH || ""].filter(Boolean).join(path.delimiter);
+  return {
+    ...process.env,
+    PATH: [...bundleBins, ...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter),
+    ...(pythonPath ? { PYTHONPATH: pythonPath } : {}),
+  };
+}
+
 const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
 const PYTHON_CANDIDATES = ["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"];
 const MIN_VERSION = [3, 10];
@@ -50,11 +82,13 @@ export const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhos
 
 // Detect whether the headroom CLI is installed and where its binary lives.
 export function findHeadroomBinary() {
+  const bundled = findBundledHeadroomDir();
+  if (bundled) return path.join(bundled, "bin", "headroom");
   try {
     const out = execSync(`${WHICH_CMD} headroom`, {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...headroomRuntimeEnv(), PATH: headroomRuntimeEnv().PATH },
     }).toString().trim();
     // Windows `where` may return multiple lines — take the first.
     return out ? out.split(/\r?\n/)[0].trim() : null;
