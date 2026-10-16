@@ -22,6 +22,9 @@ on:
       - "tests/unit/token-saver-defaults.test.js"
       - "package.json"
       - ".github/workflows/build-patched-cli-release.yml"
+  pull_request:
+    branches:
+      - dev
 
 permissions:
   contents: write
@@ -41,6 +44,10 @@ jobs:
         with:
           node-version: 22
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         env:
           NEXT_TELEMETRY_DISABLED: "1"
@@ -49,6 +56,39 @@ jobs:
         run: |
           npm install --no-audit --no-fund --no-progress
           npm install --prefix cli --no-audit --no-fund --no-progress
+
+      - name: Bundle Headroom for Colab (proxy + code, no ML)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE="cli/headroom-runtime"
+          rm -rf "$BUNDLE"
+          mkdir -p "$BUNDLE/site-packages" "$BUNDLE/bin"
+          python -m pip install \
+            --disable-pip-version-check \
+            --no-cache-dir \
+            --no-compile \
+            --only-binary=:all: \
+            --target "$BUNDLE/site-packages" \
+            "headroom-ai[proxy,code]==0.41.0"
+          cat > "$BUNDLE/bin/headroom" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+          export PYTHONPATH="$HERE/site-packages${PYTHONPATH:+:$PYTHONPATH}"
+          exec python3 -c 'import importlib.metadata as m, sys; eps=m.entry_points(); ep=next((e for e in eps.select(group="console_scripts") if e.name=="headroom"), None); ep or sys.exit("headroom console entry point missing from bundled package"); sys.argv[0]="headroom"; sys.exit(ep.load()())' "$@"
+          SH
+          chmod +x "$BUNDLE/bin/headroom"
+          PYTHONPATH="$BUNDLE/site-packages" python - <<'PY'
+          import importlib.metadata as metadata
+          dist = metadata.distribution("headroom-ai")
+          entry = next((e for e in dist.entry_points if e.group == "console_scripts" and e.name == "headroom"), None)
+          if entry is None:
+              raise SystemExit("headroom console entry point missing")
+          entry.load()
+          print(f"Validated bundled headroom-ai {dist.version} and its CLI entry point")
+          PY
+          du -sh "$BUNDLE"
 
       - name: Install test runner
         run: npm install --no-save --no-package-lock --no-audit --no-fund --no-progress vitest
@@ -89,11 +129,14 @@ jobs:
           tar -tzf "$TARBALL" >/dev/null
           PACKAGE_VERSION="$(tar -xOf "$TARBALL" package/package.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
           test "$PACKAGE_VERSION" = "$VERSION"
+          tar -tzf "$TARBALL" | grep -qx 'package/app/headroom-runtime/bin/headroom'
+          tar -tzf "$TARBALL" | grep -q 'package/app/headroom-runtime/site-packages/headroom_ai-0.41.0.dist-info/METADATA'
           sha256sum "$TARBALL" | tee "$TARBALL.sha256"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -101,7 +144,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Defers Headroom installation until requested token-saver settings are saved, avoiding stale ML-enabled settings during startup."
+          NOTES="Bundles Headroom proxy + code-aware token saver into the release for Colab startup; ML/PyTorch is intentionally excluded."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag

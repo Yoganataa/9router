@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import fs from "fs";
+import os from "os";
+import path from "path";
 
 const mocks = vi.hoisted(() => ({
   execSync: vi.fn(() => { throw new Error("not found"); }),
@@ -16,13 +19,33 @@ vi.mock("child_process", () => ({
   execFileSync: mocks.execFileSync,
 }));
 
-import { findPython310, getHeadroomStatus, getInstalledHeadroomExtras, isLoopbackHeadroomUrl } from "../../src/lib/headroom/detect.js";
+import { findBundledHeadroomDir, findHeadroomBinary, findPython310, getHeadroomStatus, getInstalledHeadroomExtras, isLoopbackHeadroomUrl } from "../../src/lib/headroom/detect.js";
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
 describe("headroom detect", () => {
+  it("prefers a release-bundled Headroom runtime without invoking PATH lookup", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "9router-headroom-"));
+    const binDir = path.join(root, "bin");
+    const packagesDir = path.join(root, "site-packages");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.mkdirSync(packagesDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, "headroom"), "#!/bin/sh\\n");
+    const previous = process.env.NINEROUTER_HEADROOM_BUNDLE_DIR;
+    process.env.NINEROUTER_HEADROOM_BUNDLE_DIR = root;
+
+    try {
+      expect(findBundledHeadroomDir()).toBe(root);
+      expect(findHeadroomBinary()).toBe(path.join(root, "bin", "headroom"));
+      expect(mocks.execSync).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.NINEROUTER_HEADROOM_BUNDLE_DIR;
+      else process.env.NINEROUTER_HEADROOM_BUNDLE_DIR = previous;
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
   it("detects installed headroom version and extras from pip list", () => {
     const result = getInstalledHeadroomExtras("python3");
 

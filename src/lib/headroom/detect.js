@@ -1,3 +1,4 @@
+import fs from "fs";
 import { execFileSync, execSync } from "child_process";
 import path from "path";
 
@@ -40,6 +41,37 @@ const EXTRA_BINS = IS_WIN
       "/bin",
     ];
 
+function bundledHeadroomCandidates() {
+  const executable = process.argv[1] ? path.dirname(path.resolve(process.argv[1])) : "";
+  return [
+    process.env.NINEROUTER_HEADROOM_BUNDLE_DIR,
+    process.env.HEADROOM_BUNDLE_DIR,
+    executable && path.join(executable, "headroom-runtime"),
+    process.cwd() && path.join(process.cwd(), "headroom-runtime"),
+    process.cwd() && path.join(process.cwd(), "app", "headroom-runtime"),
+    process.cwd() && path.join(process.cwd(), "package", "app", "headroom-runtime"),
+  ].filter(Boolean);
+}
+
+export function findBundledHeadroomDir() {
+  return bundledHeadroomCandidates().find((dir) =>
+    fs.existsSync(path.join(dir, "bin", "headroom"))
+    && fs.existsSync(path.join(dir, "site-packages"))
+  ) || null;
+}
+
+function headroomRuntimeEnv() {
+  const bundleDir = findBundledHeadroomDir();
+  const bundleBins = bundleDir ? [path.join(bundleDir, "bin")] : [];
+  const bundlePackages = bundleDir ? path.join(bundleDir, "site-packages") : "";
+  const pythonPath = [bundlePackages, process.env.PYTHONPATH || ""].filter(Boolean).join(path.delimiter);
+  return {
+    ...process.env,
+    PATH: [...bundleBins, ...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter),
+    ...(pythonPath ? { PYTHONPATH: pythonPath } : {}),
+  };
+}
+
 const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
 const PYTHON_CANDIDATES = ["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"];
 const MIN_VERSION = [3, 10];
@@ -50,11 +82,13 @@ export const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhos
 
 // Detect whether the headroom CLI is installed and where its binary lives.
 export function findHeadroomBinary() {
+  const bundled = findBundledHeadroomDir();
+  if (bundled) return path.join(bundled, "bin", "headroom");
   try {
     const out = execSync(`${WHICH_CMD} headroom`, {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: { ...headroomRuntimeEnv(), PATH: headroomRuntimeEnv().PATH },
     }).toString().trim();
     // Windows `where` may return multiple lines — take the first.
     return out ? out.split(/\r?\n/)[0].trim() : null;
@@ -73,6 +107,9 @@ export function findHeadroomBinary() {
 // binary (guaranteed to have headroom-ai), then full paths from EXTRA_BINS, then
 // bare names resolved via PATH.
 function pythonCandidates() {
+  // A release bundle has a known ABI target; avoid probing every system path at startup.
+  if (findBundledHeadroomDir()) return ["python3.12", "python3", "python"];
+
   const list = [];
   const bin = findHeadroomBinary();
   if (bin) {
@@ -90,24 +127,28 @@ function pythonCandidates() {
 
 export function findPython310() {
   let fallback = null;
+  // The release bundle is built against CPython 3.12 on Linux x86_64.
+  // Do not select another interpreter merely because PYTHONPATH exposes its metadata.
+  const hasBundledRuntime = Boolean(findBundledHeadroomDir());
   for (const candidate of pythonCandidates()) {
     try {
       const ver = execSync(`${candidate} --version`, {
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
-        env: { ...process.env, PATH: EXTENDED_PATH },
+        env: headroomRuntimeEnv(),
       }).toString().trim();
       const match = ver.match(/(\d+)\.(\d+)/);
       if (!match) continue;
       const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
       if (!(major > MIN_VERSION[0] || (major === MIN_VERSION[0] && minor >= MIN_VERSION[1]))) continue;
+      if (hasBundledRuntime && (major !== 3 || minor !== 12)) continue;
       if (!fallback) fallback = candidate;
       try {
         execFileSync(candidate, ["-m", "pip", "show", "headroom-ai"], {
           stdio: ["ignore", "pipe", "ignore"],
           windowsHide: true,
           timeout: HEADROOM_PIP_TIMEOUT_MS,
-          env: { ...process.env, PATH: EXTENDED_PATH },
+          env: headroomRuntimeEnv(),
         });
         return candidate;
       } catch {
@@ -174,7 +215,7 @@ export function getInstalledHeadroomExtras(python) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: HEADROOM_PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: headroomRuntimeEnv(),
     }).toString();
     const packages = JSON.parse(out);
     const names = new Set(packages.map((p) => String(p.name || "").toLowerCase()));
