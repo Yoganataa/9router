@@ -125,6 +125,8 @@ jobs:
           tar -tzf "$TARBALL" >/dev/null
           PACKAGE_VERSION="$(tar -xOf "$TARBALL" package/package.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
           test "$PACKAGE_VERSION" = "$VERSION"
+          tar -tzf "$TARBALL" | grep -qx 'package/app/headroom-runtime/bin/headroom'
+          tar -tzf "$TARBALL" | grep -q 'package/app/headroom-runtime/site-packages/headroom_ai-0.41.0.dist-info/METADATA'
           sha256sum "$TARBALL" | tee "$TARBALL.sha256"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
