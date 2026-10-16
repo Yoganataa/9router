@@ -129,7 +129,7 @@ export function findPython310() {
       const ver = execSync(`${candidate} --version`, {
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
-        env: { ...process.env, PATH: EXTENDED_PATH },
+        env: headroomRuntimeEnv(),
       }).toString().trim();
       const match = ver.match(/(\d+)\.(\d+)/);
       if (!match) continue;
@@ -141,7 +141,7 @@ export function findPython310() {
           stdio: ["ignore", "pipe", "ignore"],
           windowsHide: true,
           timeout: HEADROOM_PIP_TIMEOUT_MS,
-          env: { ...process.env, PATH: EXTENDED_PATH },
+          env: headroomRuntimeEnv(),
         });
         return candidate;
       } catch {
@@ -208,7 +208,7 @@ export function getInstalledHeadroomExtras(python) {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
       timeout: HEADROOM_PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
+      env: headroomRuntimeEnv(),
     }).toString();
     const packages = JSON.parse(out);
     const names = new Set(packages.map((p) => String(p.name || "").toLowerCase()));
