@@ -22,6 +22,9 @@ on:
       - "tests/unit/token-saver-defaults.test.js"
       - "package.json"
       - ".github/workflows/build-patched-cli-release.yml"
+  pull_request:
+    branches:
+      - dev
 
 permissions:
   contents: write
@@ -132,6 +135,7 @@ jobs:
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
