@@ -442,15 +442,20 @@ export default function TokenSaverClient() {
   }, [refreshHeadroomStatus, refreshPxpipeStatus, runPxpipeHealth]);
 
   const headroomRunning = !!headroomStatus.running;
+  const headroomBootstrapState = headroomStatus.bootstrap?.status;
   const headroomStatusLabel = headroomStatus.loading
     ? "Checking…"
     : headroomRunning
       ? "Running"
-      : headroomStatus.localUrl !== false && !headroomStatus.installed
-        ? "Not installed"
-        : headroomStatus.localUrl !== false
-          ? "Stopped"
-          : "External";
+      : headroomBootstrapState === "starting"
+        ? "Setting up…"
+        : headroomBootstrapState === "error"
+          ? "Setup failed"
+          : headroomStatus.localUrl !== false && !headroomStatus.installed
+            ? "Not installed"
+            : headroomStatus.localUrl !== false
+              ? "Stopped"
+              : "External";
   const headroomLocalUrl = headroomStatus.localUrl !== false;
   const headroomCanStart = !!headroomStatus.canStart;
   const headroomManaged =
@@ -536,6 +541,22 @@ export default function TokenSaverClient() {
             <p className="text-sm text-text-muted mt-1">
               Compress prompts via /v1/compress before routing to the model
             </p>
+            {headroomStatus.bootstrap?.status === "degraded" && (
+              <p className="text-xs text-warning mt-1" role="status">
+                Proxy is running, but some compression extras are unavailable
+                {headroomStatus.bootstrap.missingExtras?.length
+                  ? ` (${headroomStatus.bootstrap.missingExtras.join(", ")}).`
+                  : "."}
+                {headroomStatus.bootstrap.warning
+                  ? ` ${headroomStatus.bootstrap.warning}`
+                  : ""}
+              </p>
+            )}
+            {headroomStatus.bootstrap?.status === "error" && (
+              <p className="text-xs text-error mt-1" role="alert">
+                Headroom setup failed: {headroomStatus.bootstrap.warning || "Check the Headroom install and proxy logs."}
+              </p>
+            )}
           </div>
           <Toggle
             checked={headroomEnabled}
