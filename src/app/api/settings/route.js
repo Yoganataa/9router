@@ -78,6 +78,15 @@ export async function PATCH(request) {
 
     const settings = await updateSettings(body);
 
+    // Enabling Headroom in settings also starts the managed service. Force
+    // one serialized reconciliation so a startup run that began with older
+    // saved settings is followed by a run using the newly saved configuration.
+    if (settings.headroomEnabled === true && body.headroomEnabled === true) {
+      import("@/lib/headroom/bootstrap.js")
+        .then(({ bootstrapHeadroom }) => bootstrapHeadroom({ force: true }))
+        .catch((error) => console.warn("[Headroom] settings-triggered bootstrap failed:", error.message));
+    }
+
     // Apply outbound proxy settings immediately (no restart required)
     if (
       Object.prototype.hasOwnProperty.call(body, "outboundProxyEnabled") ||

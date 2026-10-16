@@ -41,6 +41,7 @@ const fullExtras = {
 
 beforeEach(() => {
   delete globalThis.__ninerouterHeadroomBootstrap;
+  delete globalThis.__ninerouterHeadroomBootstrapQueued;
   vi.clearAllMocks();
   delete process.env.HEADROOM_AUTO_SETUP;
   mocks.getSettings.mockResolvedValue({
@@ -138,5 +139,66 @@ describe("Headroom first-run bootstrap", () => {
     expect(mocks.installHeadroomExtras).not.toHaveBeenCalled();
     expect(mocks.startHeadroomProxy).not.toHaveBeenCalled();
     expect(result).toMatchObject({ skipped: true });
+  });
+
+  it("retries after Headroom was disabled at boot and later enabled in settings", async () => {
+    mocks.getSettings
+      .mockResolvedValueOnce({ headroomEnabled: false })
+      .mockResolvedValue({
+        headroomEnabled: true,
+        headroomUrl: "http://localhost:8787",
+        headroomCodeAware: true,
+        headroomKompress: true,
+      });
+
+    const first = await bootstrapHeadroom();
+    expect(first).toMatchObject({ skipped: true, reason: "Headroom is disabled in settings" });
+    await Promise.resolve();
+
+    const second = await bootstrapHeadroom();
+
+    expect(mocks.startHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: true,
+      kompress: true,
+    });
+    expect(second).toMatchObject({ started: true, healthy: true });
+  });
+
+  it("queues changed settings behind an in-flight bootstrap instead of racing installs", async () => {
+    mocks.getSettings
+      .mockResolvedValueOnce({
+        headroomEnabled: true,
+        headroomUrl: "http://localhost:8787",
+        headroomCodeAware: false,
+        headroomKompress: false,
+      })
+      .mockResolvedValue({
+        headroomEnabled: true,
+        headroomUrl: "http://localhost:8787",
+        headroomCodeAware: true,
+        headroomKompress: true,
+      });
+    mocks.probeProxyRunning
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    mocks.getManagedPid.mockReturnValue(2468);
+
+    const first = bootstrapHeadroom();
+    const queued = bootstrapHeadroom({ force: true });
+    const [firstResult, queuedResult] = await Promise.all([first, queued]);
+
+    expect(mocks.startHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: false,
+      kompress: false,
+    });
+    expect(mocks.restartHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: true,
+      kompress: true,
+    });
+    expect(firstResult).toMatchObject({ started: true });
+    expect(queuedResult).toMatchObject({ started: true, restarted: true });
   });
 });
