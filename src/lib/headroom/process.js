@@ -52,18 +52,19 @@ function readProcessCommandLine(pid) {
   if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return "";
   try {
     // Linux (including Colab): /proc gives the exact argv without spawning ps.
-    const procCmdline = \`/proc/\${Number(pid)}/cmdline\`;
+    const procCmdline = "/proc/" + Number(pid) + "/cmdline";
     if (fs.existsSync(procCmdline)) {
       return fs.readFileSync(procCmdline, "utf8").replace(/\0/g, " ").trim();
     }
 
     if (process.platform === "win32") {
       const safePid = String(Math.trunc(Number(pid)));
+      const command = '$p = Get-CimInstance Win32_Process -Filter "ProcessId = ' + safePid + '"; if ($p) { $p.CommandLine }';
       return execFileSync("powershell.exe", [
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        \`$p = Get-CimInstance Win32_Process -Filter "ProcessId = \${safePid}"; if ($p) { $p.CommandLine }\`,
+        command,
       ], {
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
