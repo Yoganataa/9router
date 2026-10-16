@@ -169,6 +169,20 @@ describe("Headroom first-run bootstrap", () => {
     expect(result).toMatchObject({ skipped: true });
   });
 
+  it("allows an explicit settings-triggered bootstrap when automatic startup is deferred", async () => {
+    process.env.HEADROOM_AUTO_SETUP = "false";
+
+    const result = await bootstrapHeadroom({ force: true });
+
+    expect(mocks.getSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.startHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: true,
+      kompress: true,
+    });
+    expect(result).toMatchObject({ started: true, healthy: true });
+  });
+
   it("does nothing when Headroom was explicitly disabled in settings", async () => {
     mocks.getSettings.mockResolvedValue({ headroomEnabled: false });
 

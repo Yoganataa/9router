@@ -101,7 +101,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Adds payload-aware Headroom timeouts, safely recovers unhealthy managed proxy processes, and preserves compression when ML is disabled."
+          NOTES="Defers Headroom installation until requested token-saver settings are saved, avoiding stale ML-enabled settings during startup."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag
