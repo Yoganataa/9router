@@ -124,6 +124,9 @@ function pythonCandidates() {
 
 export function findPython310() {
   let fallback = null;
+  // The release bundle is built against CPython 3.12 on Linux x86_64.
+  // Do not select another interpreter merely because PYTHONPATH exposes its metadata.
+  const hasBundledRuntime = Boolean(findBundledHeadroomDir());
   for (const candidate of pythonCandidates()) {
     try {
       const ver = execSync(`${candidate} --version`, {
@@ -135,6 +138,7 @@ export function findPython310() {
       if (!match) continue;
       const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
       if (!(major > MIN_VERSION[0] || (major === MIN_VERSION[0] && minor >= MIN_VERSION[1]))) continue;
+      if (hasBundledRuntime && (major !== 3 || minor !== 12)) continue;
       if (!fallback) fallback = candidate;
       try {
         execFileSync(candidate, ["-m", "pip", "show", "headroom-ai"], {
