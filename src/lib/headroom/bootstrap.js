@@ -13,7 +13,6 @@ import {
   startHeadroomProxy,
 } from "./process.js";
 
-const REQUIRED_EXTRAS = ["code", "ml"];
 const DEFAULT_PORT = 8787;
 
 function parsePort(url) {
@@ -29,9 +28,9 @@ function envDisabled(name) {
   return /^(0|false|no|off)$/i.test(String(process.env[name] || "").trim());
 }
 
-function hasFullExtras(status) {
+function hasRequiredExtras(status, requiredExtras) {
   return status?.installed === true
-    && REQUIRED_EXTRAS.every((extra) => status.extras?.[extra] === true);
+    && requiredExtras.every((extra) => status.extras?.[extra] === true);
 }
 
 async function runBootstrap() {
@@ -51,22 +50,32 @@ async function runBootstrap() {
   }
 
   const port = parsePort(url);
+  const requiredExtras = [];
+  if (settings.headroomCodeAware === true) requiredExtras.push("code");
+  if (settings.headroomKompress !== false) requiredExtras.push("ml");
+
   const python = findPython310();
   if (!python) {
     throw new Error("Python 3.10 or newer is required to install Headroom.");
   }
 
   let extras = getInstalledHeadroomExtras(python);
-  if (!hasFullExtras(extras)) {
-    console.info("[Headroom] Installing proxy with Code-Aware and ML compression extras. The ML extra can require a large download.");
-    const install = await installHeadroomExtras(REQUIRED_EXTRAS);
+  if (!hasRequiredExtras(extras, requiredExtras)) {
+    const summary = requiredExtras.length ? requiredExtras.join(" and ") : "proxy";
+    console.info(
+      `[Headroom] Installing proxy with requested compression features: ${summary}.`
+      + (requiredExtras.includes("ml") ? " The ML extra can require a large download." : "")
+    );
+    const install = await installHeadroomExtras(requiredExtras);
     extras = {
       installed: install.installed,
       extras: install.extras,
       version: install.version,
     };
-    if (!hasFullExtras(extras)) {
-      throw new Error("Headroom installation completed without verifying both Code-Aware and ML extras.");
+    if (!hasRequiredExtras(extras, requiredExtras)) {
+      throw new Error(
+        `Headroom installation completed without verifying requested extras: ${requiredExtras.join(", ") || "proxy"}.`
+      );
     }
   }
 
@@ -100,9 +109,20 @@ export function bootstrapHeadroom() {
   // A global promise prevents duplicate pip installs or competing proxy
   // launches when Next.js initializes more than one server module.
   if (!globalThis.__ninerouterHeadroomBootstrap) {
-    globalThis.__ninerouterHeadroomBootstrap = runBootstrap().catch((error) => {
+    const pending = runBootstrap().catch((error) => {
       console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", error?.message || String(error));
       return { started: false, error: error?.message || String(error) };
+    });
+    globalThis.__ninerouterHeadroomBootstrap = pending;
+
+    // A skipped or failed run may be retried after an operator enables
+    // Headroom in settings. Keep a pending/successful run shared across callers.
+    void pending.then((result) => {
+      const canRetry = result?.error
+        || (result?.skipped && result.reason === "Headroom is disabled in settings");
+      if (canRetry && globalThis.__ninerouterHeadroomBootstrap === pending) {
+        globalThis.__ninerouterHeadroomBootstrap = null;
+      }
     });
   }
   return globalThis.__ninerouterHeadroomBootstrap;
