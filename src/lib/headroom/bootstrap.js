@@ -105,25 +105,42 @@ async function runBootstrap() {
   return { started: true, ...result, version: extras.version, extras: extras.extras };
 }
 
-export function bootstrapHeadroom() {
+export function bootstrapHeadroom({ force = false } = {}) {
   // A global promise prevents duplicate pip installs or competing proxy
   // launches when Next.js initializes more than one server module.
-  if (!globalThis.__ninerouterHeadroomBootstrap) {
-    const pending = runBootstrap().catch((error) => {
-      console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", error?.message || String(error));
-      return { started: false, error: error?.message || String(error) };
-    });
-    globalThis.__ninerouterHeadroomBootstrap = pending;
+  const current = globalThis.__ninerouterHeadroomBootstrap;
+  if (current && !force) return current;
 
-    // A skipped or failed run may be retried after an operator enables
-    // Headroom in settings. Keep a pending/successful run shared across callers.
-    void pending.then((result) => {
-      const canRetry = result?.error
-        || (result?.skipped && result.reason === "Headroom is disabled in settings");
-      if (canRetry && globalThis.__ninerouterHeadroomBootstrap === pending) {
-        globalThis.__ninerouterHeadroomBootstrap = null;
-      }
-    });
+  if (current && force) {
+    // Settings may be changed while first-run package installation is still
+    // in progress. Queue exactly one reconciliation using the latest settings
+    // after the current run finishes instead of racing two pip installs.
+    if (!globalThis.__ninerouterHeadroomBootstrapQueued) {
+      const queued = current.then(() => {
+        if (globalThis.__ninerouterHeadroomBootstrap === current) {
+          globalThis.__ninerouterHeadroomBootstrap = null;
+        }
+        globalThis.__ninerouterHeadroomBootstrapQueued = null;
+        return bootstrapHeadroom();
+      });
+      globalThis.__ninerouterHeadroomBootstrapQueued = queued;
+    }
+    return globalThis.__ninerouterHeadroomBootstrapQueued;
   }
-  return globalThis.__ninerouterHeadroomBootstrap;
+
+  const pending = runBootstrap().catch((error) => {
+    console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", error?.message || String(error));
+    return { started: false, error: error?.message || String(error) };
+  });
+  globalThis.__ninerouterHeadroomBootstrap = pending;
+
+  // A skipped/failed run may be retried later, e.g. after a saved setting
+  // enables Headroom or the operator fixes a missing system dependency.
+  void pending.then((result) => {
+    const canRetry = result?.error || result?.skipped;
+    if (canRetry && globalThis.__ninerouterHeadroomBootstrap === pending) {
+      globalThis.__ninerouterHeadroomBootstrap = null;
+    }
+  });
+  return pending;
 }
