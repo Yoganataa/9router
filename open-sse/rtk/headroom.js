@@ -5,12 +5,24 @@ import {
   openaiToOpenAIResponsesRequest,
 } from "../translator/request/openai-responses.js";
 
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 10000;
 
 function normalizeTimeout(value) {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? value
     : DEFAULT_TIMEOUT_MS;
+}
+
+// Headroom v0.41.0 defaults its internal compression pipeline timeout to 30s.
+// A 3s caller timeout can cancel a large request before Headroom can return its
+// own timeout/fail-open response. Scale the caller budget using the actual
+// message payload (not tool schemas, which are not sent to /v1/compress).
+function effectiveCompressionTimeout(configuredTimeoutMs, messages) {
+  const base = normalizeTimeout(configuredTimeoutMs);
+  const bytes = jsonBytes(messages);
+  if (bytes >= 1_000_000) return Math.max(base, 32_000);
+  if (bytes >= 250_000) return Math.max(base, 15_000);
+  return base;
 }
 
 function jsonBytes(value) {
@@ -214,7 +226,9 @@ function applyKiroHeadroomMessages(projection, compressedMessages, diagnostics) 
 
 // POST messages to Headroom /v1/compress; returns compressed messages + stats or null.
 async function callCompress(url, messages, model, timeoutMs, compressUserMessages, diagnostics) {
+  timeoutMs = effectiveCompressionTimeout(timeoutMs, messages);
   const endpoint = buildCompressEndpoint(url);
+  diagnostics.timeoutMs = timeoutMs;
   diagnostics.endpoint = maskEndpoint(endpoint);
   const payload = { messages, model };
   if (compressUserMessages) payload.config = { compress_user_messages: true };
