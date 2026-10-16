@@ -52,9 +52,9 @@ function readProcessCommandLine(pid) {
   if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return "";
   try {
     // Linux (including Colab): /proc gives the exact argv without spawning ps.
-    const procCmdline = `/proc/${Number(pid)}/cmdline`;
+    const procCmdline = \`/proc/\${Number(pid)}/cmdline\`;
     if (fs.existsSync(procCmdline)) {
-      return fs.readFileSync(procCmdline, "utf8").replace(/\\0/g, " ").trim();
+      return fs.readFileSync(procCmdline, "utf8").replace(/\0/g, " ").trim();
     }
 
     if (process.platform === "win32") {
@@ -63,7 +63,7 @@ function readProcessCommandLine(pid) {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${safePid}"; if ($p) { $p.CommandLine }`,
+        \`$p = Get-CimInstance Win32_Process -Filter "ProcessId = \${safePid}"; if ($p) { $p.CommandLine }\`,
       ], {
         stdio: ["ignore", "pipe", "ignore"],
         windowsHide: true,
@@ -84,7 +84,7 @@ function readProcessCommandLine(pid) {
 
 function isHeadroomProxyCommand(commandLine) {
   const cmd = String(commandLine || "");
-  return /headroom(?:\\.exe)?/i.test(cmd) && /(?:^|[\\s/])proxy(?:[\\s]|$)/i.test(cmd);
+  return /headroom(?:\.exe)?/i.test(cmd) && /(?:^|[\s/])proxy(?:[\s]|$)/i.test(cmd);
 }
 
 function processError(message, code) {
