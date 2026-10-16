@@ -78,6 +78,21 @@ export async function PATCH(request) {
 
     const settings = await updateSettings(body);
 
+    // Starting or reconfiguring an enabled token saver should trigger the
+    // same idempotent Headroom bootstrap used during server startup. This
+    // handles existing databases that were previously saved with Headroom off.
+    const headroomSettingChanged = [
+      "headroomEnabled",
+      "headroomCodeAware",
+      "headroomKompress",
+      "headroomCompressUserMessages",
+    ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+    if (settings.headroomEnabled === true && headroomSettingChanged) {
+      import("@/lib/headroom/bootstrap.js")
+        .then(({ bootstrapHeadroom }) => bootstrapHeadroom())
+        .catch((error) => console.warn("[Headroom] settings-triggered bootstrap failed:", error.message));
+    }
+
     // Apply outbound proxy settings immediately (no restart required)
     if (
       Object.prototype.hasOwnProperty.call(body, "outboundProxyEnabled") ||
