@@ -11,11 +11,38 @@ export async function GET() {
     const url = settings.headroomUrl || DEFAULT_HEADROOM_URL;
     const status = await getHeadroomStatus(url);
     const managedPid = getManagedPid();
-    const bootstrap = globalThis.__ninerouterHeadroomBootstrapState || {
+    let bootstrap = globalThis.__ninerouterHeadroomBootstrapState || {
       status: settings.headroomEnabled === true ? "not-started" : "disabled",
       missingExtras: [],
       warning: null,
     };
+
+    // If an operator manually installs a previously missing extra and the
+    // managed proxy is restarted successfully, clear stale degraded status.
+    const configuredExtras = [
+      ...(settings.headroomCodeAware === true ? ["code"] : []),
+      ...(settings.headroomKompress !== false ? ["ml"] : []),
+    ];
+    if (
+      managedPid
+      && status.running
+      && status.installed
+      && settings.headroomEnabled === true
+      && configuredExtras.every((extra) => status.extras?.[extra] === true)
+      && bootstrap.status === "degraded"
+      && Array.isArray(bootstrap.missingExtras)
+      && bootstrap.missingExtras.length > 0
+    ) {
+      bootstrap = {
+        ...bootstrap,
+        status: "ready",
+        missingExtras: [],
+        warning: null,
+        updatedAt: Date.now(),
+      };
+      globalThis.__ninerouterHeadroomBootstrapState = bootstrap;
+    }
+
     return NextResponse.json({ ...status, url, managedPid, bootstrap });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
