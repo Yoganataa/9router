@@ -68,6 +68,7 @@ jobs:
             --disable-pip-version-check \
             --no-cache-dir \
             --no-compile \
+            --only-binary=:all: \
             --target "$BUNDLE/site-packages" \
             "headroom-ai[proxy,code]==0.41.0"
           cat > "$BUNDLE/bin/headroom" <<'SH'
