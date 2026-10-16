@@ -219,7 +219,7 @@ function buildCliPackage() {
     throw new Error("Prebuilt Headroom runtime missing. Run the release workflow's bundle step first.");
   }
   copyRecursive(headroomBundleSrc, headroomBundleDest);
-  console.log("✅ Copied prebuilt Headroom runtime (proxy + code extra; ML excluded)\\n");
+  console.log("✅ Copied prebuilt Headroom runtime (proxy + code extra; ML excluded)\n");
 
   // Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
   const customServerSrc = path.join(appDir, "custom-server.js");
