@@ -60,49 +60,99 @@ async function runBootstrap() {
   }
 
   let extras = getInstalledHeadroomExtras(python);
+  let installError = null;
   if (!hasRequiredExtras(extras, requiredExtras)) {
     const summary = requiredExtras.length ? requiredExtras.join(" and ") : "proxy";
     console.info(
       `[Headroom] Installing proxy with requested compression features: ${summary}.`
       + (requiredExtras.includes("ml") ? " The ML extra can require a large download." : "")
     );
-    const install = await installHeadroomExtras(requiredExtras);
-    extras = {
-      installed: install.installed,
-      extras: install.extras,
-      version: install.version,
-    };
-    if (!hasRequiredExtras(extras, requiredExtras)) {
-      throw new Error(
-        `Headroom installation completed without verifying requested extras: ${requiredExtras.join(", ") || "proxy"}.`
+    try {
+      const install = await installHeadroomExtras(requiredExtras);
+      extras = {
+        installed: install.installed,
+        extras: install.extras,
+        version: install.version,
+      };
+      if (!hasRequiredExtras(extras, requiredExtras)) {
+        throw new Error(
+          `Headroom installation completed without verifying requested extras: ${requiredExtras.join(", ") || "proxy"}.`
+        );
+      }
+    } catch (error) {
+      // An optional heavy extra (especially ML/PyTorch) must not keep the
+      // base proxy permanently stopped when headroom-ai or another requested
+      // extra is already available. Re-detect installed packages and run in a
+      // truthful degraded mode while exposing the installation error in logs.
+      installError = error?.message || String(error);
+      extras = getInstalledHeadroomExtras(python);
+      if (!extras.installed) throw error;
+      const missing = requiredExtras.filter((extra) => extras.extras?.[extra] !== true);
+      console.warn(
+        `[Headroom] Requested extras could not all be installed (${missing.join(", ") || "unknown"}); starting the available proxy features. ${installError}`
       );
     }
   }
 
+  const missingExtras = requiredExtras.filter((extra) => extras.extras?.[extra] !== true);
+  const activeCodeAware = settings.headroomCodeAware === true && extras.extras?.code === true;
+  const activeKompress = settings.headroomKompress !== false && extras.extras?.ml === true;
   const running = await probeProxyRunning(url);
   const managedPid = getManagedPid();
   const options = {
     port,
-    codeAware: settings.headroomCodeAware === true,
-    kompress: settings.headroomKompress !== false,
+    codeAware: activeCodeAware,
+    // If [ml] is missing, explicitly disable Kompress so Headroom does not
+    // exit during startup trying to load an unavailable ML dependency.
+    kompress: activeKompress,
   };
 
   if (running && managedPid) {
     // Reapply the default flags after package upgrades or a server restart.
     await restartHeadroomProxy(options);
-    console.info("[Headroom] Full proxy is healthy and running with configured compression flags.");
-    return { started: true, restarted: true, version: extras.version, extras: extras.extras };
+    console.info(
+      missingExtras.length
+        ? `[Headroom] Proxy is healthy in partial mode; missing extras: ${missingExtras.join(", ")}.`
+        : "[Headroom] Full proxy is healthy and running with configured compression flags."
+    );
+    return {
+      started: true,
+      restarted: true,
+      version: extras.version,
+      extras: extras.extras,
+      missingExtras,
+      warning: installError || (missingExtras.length ? `Missing extras: ${missingExtras.join(", ")}` : null),
+    };
   }
 
   if (running) {
     // Never terminate an externally managed proxy just to enforce our flags.
-    console.warn("[Headroom] A proxy is already healthy but is not managed by this instance. It was left untouched; restart it with the configured flags to guarantee full mode.");
-    return { started: false, alreadyRunning: true, managed: false, version: extras.version, extras: extras.extras };
+    console.warn("[Headroom] A proxy is already healthy but is not managed by this instance. It was left untouched; its launch flags cannot be verified.");
+    return {
+      started: true,
+      alreadyRunning: true,
+      managed: false,
+      version: extras.version,
+      extras: extras.extras,
+      missingExtras,
+      warning: installError || (missingExtras.length ? `Missing extras: ${missingExtras.join(", ")}` : "Externally managed proxy; launch flags were not verified"),
+    };
   }
 
   const result = await startHeadroomProxy(options);
-  console.info("[Headroom] Full proxy is healthy and running with configured compression flags.");
-  return { started: true, ...result, version: extras.version, extras: extras.extras };
+  console.info(
+    missingExtras.length
+      ? `[Headroom] Proxy is healthy in partial mode; missing extras: ${missingExtras.join(", ")}.`
+      : "[Headroom] Full proxy is healthy and running with configured compression flags."
+  );
+  return {
+    started: true,
+    ...result,
+    version: extras.version,
+    extras: extras.extras,
+    missingExtras,
+    warning: installError || (missingExtras.length ? `Missing extras: ${missingExtras.join(", ")}` : null),
+  };
 }
 
 export function bootstrapHeadroom({ force = false } = {}) {
@@ -128,9 +178,36 @@ export function bootstrapHeadroom({ force = false } = {}) {
     return globalThis.__ninerouterHeadroomBootstrapQueued;
   }
 
+  globalThis.__ninerouterHeadroomBootstrapState = {
+    status: "starting",
+    startedAt: Date.now(),
+    missingExtras: [],
+    warning: null,
+  };
   const pending = runBootstrap().catch((error) => {
-    console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", error?.message || String(error));
-    return { started: false, error: error?.message || String(error) };
+    const message = error?.message || String(error);
+    console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", message);
+    return { started: false, error: message };
+  }).then((result) => {
+    const missingExtras = Array.isArray(result?.missingExtras) ? result.missingExtras : [];
+    const status = result?.error
+      ? "error"
+      : result?.skipped
+        ? "skipped"
+        : missingExtras.length || result?.warning
+          ? "degraded"
+          : result?.started
+            ? "ready"
+            : "stopped";
+    globalThis.__ninerouterHeadroomBootstrapState = {
+      status,
+      updatedAt: Date.now(),
+      missingExtras,
+      warning: result?.warning || result?.error || null,
+      version: result?.version || null,
+      extras: result?.extras || null,
+    };
+    return result;
   });
   globalThis.__ninerouterHeadroomBootstrap = pending;
 

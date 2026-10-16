@@ -11,7 +11,12 @@ export async function GET() {
     const url = settings.headroomUrl || DEFAULT_HEADROOM_URL;
     const status = await getHeadroomStatus(url);
     const managedPid = getManagedPid();
-    return NextResponse.json({ ...status, url, managedPid });
+    const bootstrap = globalThis.__ninerouterHeadroomBootstrapState || {
+      status: settings.headroomEnabled === true ? "not-started" : "disabled",
+      missingExtras: [],
+      warning: null,
+    };
+    return NextResponse.json({ ...status, url, managedPid, bootstrap });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

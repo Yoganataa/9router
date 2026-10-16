@@ -79,6 +79,44 @@ describe("Headroom first-run bootstrap", () => {
     expect(result).toMatchObject({ started: true, healthy: true, extras: { code: true, ml: true } });
   });
 
+  it("starts the proxy in degraded mode when the ML extra fails to install", async () => {
+    mocks.getInstalledHeadroomExtras
+      .mockReturnValueOnce({
+        installed: true,
+        version: "0.41.0",
+        extras: { code: true, ml: false },
+      })
+      .mockReturnValue({
+        installed: true,
+        version: "0.41.0",
+        extras: { code: true, ml: false },
+      });
+    mocks.installHeadroomExtras.mockRejectedValue(
+      new Error("pip install failed; see headroom/install.log")
+    );
+
+    const result = await bootstrapHeadroom();
+
+    expect(mocks.installHeadroomExtras).toHaveBeenCalledWith(["code", "ml"]);
+    expect(mocks.startHeadroomProxy).toHaveBeenCalledWith({
+      port: 8787,
+      codeAware: true,
+      kompress: false,
+    });
+    expect(result).toMatchObject({
+      started: true,
+      healthy: true,
+      extras: { code: true, ml: false },
+      missingExtras: ["ml"],
+      warning: "pip install failed; see headroom/install.log",
+    });
+    expect(globalThis.__ninerouterHeadroomBootstrapState).toMatchObject({
+      status: "degraded",
+      missingExtras: ["ml"],
+      warning: "pip install failed; see headroom/install.log",
+    });
+  });
+
   it("restarts a managed running proxy to apply the full-mode flags", async () => {
     mocks.probeProxyRunning.mockResolvedValue(true);
     mocks.getManagedPid.mockReturnValue(2468);

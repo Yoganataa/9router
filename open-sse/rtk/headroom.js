@@ -362,8 +362,12 @@ export function formatHeadroomSizeLog(diagnostics) {
 
 export function isHeadroomPhantomSavings(stats, diagnostics, minShrinkRatio = 0.05) {
   if (!stats?.tokens_saved || stats.tokens_saved <= 0) return false;
-  const before = diagnostics?.before?.bodyBytes || 0;
-  const after = diagnostics?.after?.bodyBytes || 0;
-  if (before <= 0 || after <= 0) return false;
-  return after >= before * (1 - minShrinkRatio);
+  // Tool schemas can dominate the full payload while message text is
+  // compressed successfully. Warn only when both messages and the total body
+  // barely shrink; keep the body check for savings in Claude's system prompt.
+  return ["bodyBytes", "messageBytes"].every((key) => {
+    const before = diagnostics?.before?.[key] || 0;
+    const after = diagnostics?.after?.[key] || 0;
+    return before > 0 && after > 0 && after >= before * (1 - minShrinkRatio);
+  });
 }
