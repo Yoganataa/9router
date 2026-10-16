@@ -14,7 +14,7 @@ export default function TokenSaverClient() {
   const [rtkEnabled, setRtkEnabledState] = useState(true);
   const [headroomEnabled, setHeadroomEnabled] = useState(false);
   const [headroomUrl, setHeadroomUrl] = useState("http://localhost:8787");
-  const [headroomTimeoutMs, setHeadroomTimeoutMs] = useState(3000);
+  const [headroomTimeoutMs, setHeadroomTimeoutMs] = useState(10000);
   const [headroomStatus, setHeadroomStatus] = useState({
     installed: false,
     running: false,
@@ -430,7 +430,7 @@ export default function TokenSaverClient() {
 
   const handleHeadroomTimeoutBlur = () => {
     const raw = Math.round(Number(headroomTimeoutMs));
-    const next = Number.isFinite(raw) && raw > 0 ? raw : 3000;
+    const next = Number.isFinite(raw) && raw > 0 ? raw : 10000;
     setHeadroomTimeoutMs(next);
     patchSetting({ headroomTimeoutMs: next });
   };
@@ -875,11 +875,11 @@ export default function TokenSaverClient() {
               value={String(headroomTimeoutMs)}
               onChange={(e) => setHeadroomTimeoutMs(e.target.value)}
               onBlur={handleHeadroomTimeoutBlur}
-              placeholder="3000"
+              placeholder="10000"
               className="font-mono text-sm"
             />
             <p className="text-xs text-text-muted">
-              Request timeout in milliseconds. Defaults to 3000 ms.
+              Base timeout in milliseconds (default 10000 ms). Payloads over 250 KB automatically get 15 seconds, and payloads over 1 MB get 32 seconds to allow Headroom's own 30-second timeout to return.
             </p>
           </div>
           {headroomManaged ? (

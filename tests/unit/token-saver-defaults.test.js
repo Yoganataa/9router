@@ -25,6 +25,7 @@ describe("token saver defaults", () => {
     expect(mergeWithDefaults({})).toMatchObject({
       rtkEnabled: true,
       headroomEnabled: true,
+      headroomTimeoutMs: 10000,
       headroomCodeAware: true,
       headroomKompress: true,
       headroomCompressUserMessages: true,

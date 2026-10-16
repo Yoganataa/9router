@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { spawn } from "child_process";
+import { spawn, execFileSync } from "child_process";
 import { DATA_DIR } from "@/lib/dataDir.js";
 import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, EXTRA_MARKERS, getInstalledHeadroomExtras, probeProxyRunning } from "./detect.js";
 
@@ -48,6 +48,99 @@ export function getManagedPid() {
   return pid && isPidAlive(pid) ? pid : null;
 }
 
+function readProcessCommandLine(pid) {
+  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return "";
+  try {
+    // Linux (including Colab): /proc gives the exact argv without spawning ps.
+    const procCmdline = "/proc/" + Number(pid) + "/cmdline";
+    if (fs.existsSync(procCmdline)) {
+      return fs.readFileSync(procCmdline, "utf8").replace(/\0/g, " ").trim();
+    }
+
+    if (process.platform === "win32") {
+      const safePid = String(Math.trunc(Number(pid)));
+      const command = '$p = Get-CimInstance Win32_Process -Filter "ProcessId = ' + safePid + '"; if ($p) { $p.CommandLine }';
+      return execFileSync("powershell.exe", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        command,
+      ], {
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+        timeout: 2000,
+        encoding: "utf8",
+      }).trim();
+    }
+
+    return execFileSync("ps", ["-p", String(Math.trunc(Number(pid))), "-o", "command="], {
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "";
+  }
+}
+
+function isHeadroomProxyCommand(commandLine) {
+  const cmd = String(commandLine || "");
+  return /headroom(?:\.exe)?/i.test(cmd) && /(?:^|[\s/])proxy(?:[\s]|$)/i.test(cmd);
+}
+
+function processError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+// A PID file can survive runtime restarts and the OS can reuse a PID. Never
+// signal a process unless its command line still identifies the Headroom proxy.
+async function stopManagedHeadroomProcess(pid) {
+  if (!isPidAlive(pid)) {
+    clearPid(pid);
+    return { stopped: false, reason: "not_running" };
+  }
+
+  const commandLine = readProcessCommandLine(pid);
+  if (!isHeadroomProxyCommand(commandLine)) {
+    // PID was reused (or is not inspectable). Clear only our stale record and
+    // let the new launch report a port conflict if another service owns it.
+    clearPid(pid);
+    return {
+      stopped: false,
+      reason: "pid_ownership_mismatch",
+      warning: `Saved Headroom PID ${pid} no longer identifies a Headroom proxy; its PID record was cleared without terminating the process.`,
+    };
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+
+  for (let i = 0; i < 30 && isPidAlive(pid); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  if (isPidAlive(pid)) {
+    try { process.kill(pid, "SIGKILL"); } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+    for (let i = 0; i < 10 && isPidAlive(pid); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  if (isPidAlive(pid)) {
+    throw processError(`Headroom proxy PID ${pid} did not stop after SIGTERM/SIGKILL.`, "STOP_FAILED");
+  }
+
+  clearPid(pid);
+  return { stopped: true, pid };
+}
+
 // Build proxy CLI flags for the active compression extras. `[code]` (AST
 // compression) is off by default in headroom → pass --code-aware to turn it on;
 // `[ml]` (Kompress) is on by default → pass --disable-kompress to turn it off.
@@ -73,11 +166,9 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, codeAware = fals
 
   if (recordedPid && !existing) clearPid(recordedPid);
   if (existing) {
-    const err = new Error(
-      `Headroom process ${existing} is alive but ${url}/health is not responding. Stop or restart that process before starting another instance.`
-    );
-    err.code = "HEADROOM_UNHEALTHY";
-    throw err;
+    console.warn(`[Headroom] Managed PID ${existing} is alive but ${url}/health is not responding; attempting a safe recovery.`);
+    const recovery = await stopManagedHeadroomProcess(existing);
+    if (recovery.warning) console.warn(`[Headroom] ${recovery.warning}`);
   }
 
   const binary = findHeadroomBinary();
@@ -172,6 +263,10 @@ export async function startHeadroomProxy({ port = DEFAULT_PORT, codeAware = fals
 export function stopHeadroomProxy() {
   const pid = getManagedPid();
   if (!pid) return { stopped: false, reason: "not_running" };
+  if (!isHeadroomProxyCommand(readProcessCommandLine(pid))) {
+    clearPid(pid);
+    return { stopped: false, reason: "pid_ownership_mismatch" };
+  }
   try {
     process.kill(pid, "SIGTERM");
     // Give it a moment, then force if still alive.
@@ -194,18 +289,7 @@ export function stopHeadroomProxy() {
 // with the given flags. Used when toggling active extras that require a restart.
 export async function restartHeadroomProxy(opts = {}) {
   const pid = getManagedPid();
-  if (pid) {
-    try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
-    // Wait up to ~3s for graceful exit, force-kill if still alive.
-    for (let i = 0; i < 30 && isPidAlive(pid); i++) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    if (isPidAlive(pid)) {
-      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
-      await new Promise((r) => setTimeout(r, 300));
-    }
-    clearPid();
-  }
+  if (pid) await stopManagedHeadroomProcess(pid);
   return startHeadroomProxy(opts);
 }
 
