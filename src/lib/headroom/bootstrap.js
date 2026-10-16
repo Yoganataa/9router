@@ -33,8 +33,10 @@ function hasRequiredExtras(status, requiredExtras) {
     && requiredExtras.every((extra) => status.extras?.[extra] === true);
 }
 
-async function runBootstrap() {
-  if (envDisabled("HEADROOM_AUTO_SETUP")) {
+async function runBootstrap({ force = false } = {}) {
+  // The launcher can defer auto-install until its chosen settings are persisted.
+  // A settings-triggered forced bootstrap must still proceed in that mode.
+  if (!force && envDisabled("HEADROOM_AUTO_SETUP")) {
     return { skipped: true, reason: "disabled by HEADROOM_AUTO_SETUP" };
   }
 
@@ -171,7 +173,7 @@ export function bootstrapHeadroom({ force = false } = {}) {
           globalThis.__ninerouterHeadroomBootstrap = null;
         }
         globalThis.__ninerouterHeadroomBootstrapQueued = null;
-        return bootstrapHeadroom();
+        return bootstrapHeadroom({ force: true });
       });
       globalThis.__ninerouterHeadroomBootstrapQueued = queued;
     }
@@ -184,7 +186,7 @@ export function bootstrapHeadroom({ force = false } = {}) {
     missingExtras: [],
     warning: null,
   };
-  const pending = runBootstrap().catch((error) => {
+  const pending = runBootstrap({ force }).catch((error) => {
     const message = error?.message || String(error);
     console.warn("[Headroom] Automatic setup failed; requests remain fail-open:", message);
     return { started: false, error: message };
