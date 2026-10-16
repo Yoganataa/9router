@@ -59,7 +59,7 @@ const DEFAULT_SETTINGS = {
   headroomEnabled: booleanEnv("HEADROOM_DEFAULT_ENABLED", true),
   headroomUrl: DEFAULT_HEADROOM_URL,
   headroomCompressUserMessages: booleanEnv("HEADROOM_DEFAULT_COMPRESS_USER_MESSAGES", true),
-  headroomTimeoutMs: 3000,
+  headroomTimeoutMs: 15000,
   headroomCodeAware: booleanEnv("HEADROOM_DEFAULT_CODE_AWARE", true),
   headroomKompress: booleanEnv("HEADROOM_DEFAULT_KOMPRESS", true),
   cavemanEnabled: false,
