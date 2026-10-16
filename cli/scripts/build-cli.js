@@ -210,6 +210,17 @@ function buildCliPackage() {
   }
   console.log("✅ Copied standalone build\n");
 
+  // Step 3a: Include the prebuilt Linux/CPython Headroom runtime in the release.
+  // CI creates this directory before npm run cli:pack; Colab should not need pip install.
+  const headroomBundleSrc = path.join(cliDir, "headroom-runtime");
+  const headroomBundleDest = path.join(cliAppDir, "headroom-runtime");
+  if (!fs.existsSync(path.join(headroomBundleSrc, "bin", "headroom"))
+      || !fs.existsSync(path.join(headroomBundleSrc, "site-packages"))) {
+    throw new Error("Prebuilt Headroom runtime missing. Run the release workflow's bundle step first.");
+  }
+  copyRecursive(headroomBundleSrc, headroomBundleDest);
+  console.log("✅ Copied prebuilt Headroom runtime (proxy + code extra; ML excluded)\\n");
+
   // Step 3a: Copy custom server (injects real socket IP, strips spoofable XFF).
   const customServerSrc = path.join(appDir, "custom-server.js");
   if (fs.existsSync(customServerSrc)) {
