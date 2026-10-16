@@ -129,7 +129,7 @@ async function runBootstrap() {
     // Never terminate an externally managed proxy just to enforce our flags.
     console.warn("[Headroom] A proxy is already healthy but is not managed by this instance. It was left untouched; its launch flags cannot be verified.");
     return {
-      started: true,
+      started: false,
       alreadyRunning: true,
       managed: false,
       version: extras.version,
