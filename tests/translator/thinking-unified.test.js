@@ -325,7 +325,7 @@ describe("transport-declared thinkingFormat (Responses endpoints)", () => {
   });
 
   it("a provider without transport declaration retains existing behavior", () => {
-    const out = apply("openai-responses", "oc/space-bunny-free", chatBody("high"), "oc");
+    const out = apply("openai-responses", "gpt-5.5", chatBody("high"), "openai");
     expect(out.reasoning_effort).toBe("high");
   });
 });
