@@ -18,6 +18,13 @@ on:
       - "tests/unit/headroom-chat-core.test.js"
       - "tests/unit/headroom-process.test.js"
       - "tests/unit/configured-api-key.test.js"
+      - "tests/unit/noauth-pinned-pool-failover.test.js"
+      - "tests/unit/noauth-proxy-fallback.test.js"
+      - "tests/unit/opencode-fingerprint-passthrough-restore.test.js"
+      - "tests/unit/opencode-free-deepseek-effort.test.js"
+      - "tests/unit/opencode-free-glm-thinking-format.test.js"
+      - "tests/unit/stream-tool-call-id.test.js"
+      - "tests/translator/thinking-unified.test.js"
       - "tests/unit/headroom-bootstrap.test.js"
       - "tests/unit/token-saver-defaults.test.js"
       - "package.json"
@@ -68,6 +75,13 @@ jobs:
             tests/unit/headroom-chat-core.test.js \
             tests/unit/headroom-process.test.js \
             tests/unit/configured-api-key.test.js \
+            tests/unit/noauth-pinned-pool-failover.test.js \
+            tests/unit/noauth-proxy-fallback.test.js \
+            tests/unit/opencode-fingerprint-passthrough-restore.test.js \
+            tests/unit/opencode-free-deepseek-effort.test.js \
+            tests/unit/opencode-free-glm-thinking-format.test.js \
+            tests/unit/stream-tool-call-id.test.js \
+            tests/translator/thinking-unified.test.js \
             tests/unit/headroom-bootstrap.test.js \
             tests/unit/token-saver-defaults.test.js
 
