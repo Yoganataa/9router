@@ -1,3 +1,11 @@
+# v0.5.112 (2026-10-22)
+
+## Fixes
+- **OpenCode Go**: select the thinking format per transport so strict `/responses` endpoints receive nested `reasoning:{effort,summary}`, while Chat Completions keeps the model-native shape (#5105).
+- **OpenCode Free**: send OpenAI-style `reasoning_effort` for `glm-5.3-flash-free` and expose the supported `low|high|max` levels for `deepseek-v4.1-flash-free` (#5003, #4984).
+- **OpenCode / Proxy Pools**: fail over from unhealthy or pinned proxy pools while preserving fail-closed behaviour when every configured pool is excluded (#4998, #5046).
+- **OpenCode Streaming**: restore fingerprint-renamed caller tool names and synthesize stable IDs when streamed tool-call fragments omit them (#5048).
+
 # v0.5.99 (2026-10-08)
 
 ## Features
