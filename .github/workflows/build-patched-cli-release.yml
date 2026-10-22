@@ -18,6 +18,13 @@ on:
       - "tests/unit/headroom-chat-core.test.js"
       - "tests/unit/headroom-process.test.js"
       - "tests/unit/configured-api-key.test.js"
+      - "tests/unit/noauth-pinned-pool-failover.test.js"
+      - "tests/unit/noauth-proxy-fallback.test.js"
+      - "tests/unit/opencode-fingerprint-passthrough-restore.test.js"
+      - "tests/unit/opencode-free-deepseek-effort.test.js"
+      - "tests/unit/opencode-free-glm-thinking-format.test.js"
+      - "tests/unit/stream-tool-call-id.test.js"
+      - "tests/translator/thinking-unified.test.js"
       - "tests/unit/headroom-bootstrap.test.js"
       - "tests/unit/token-saver-defaults.test.js"
       - "package.json"
@@ -68,6 +75,13 @@ jobs:
             tests/unit/headroom-chat-core.test.js \
             tests/unit/headroom-process.test.js \
             tests/unit/configured-api-key.test.js \
+            tests/unit/noauth-pinned-pool-failover.test.js \
+            tests/unit/noauth-proxy-fallback.test.js \
+            tests/unit/opencode-fingerprint-passthrough-restore.test.js \
+            tests/unit/opencode-free-deepseek-effort.test.js \
+            tests/unit/opencode-free-glm-thinking-format.test.js \
+            tests/unit/stream-tool-call-id.test.js \
+            tests/translator/thinking-unified.test.js \
             tests/unit/headroom-bootstrap.test.js \
             tests/unit/token-saver-defaults.test.js
 
@@ -101,7 +115,7 @@ jobs:
           VERSION="${{ steps.package.outputs.version }}"
           TARBALL="${{ steps.package.outputs.tarball }}"
           TAG="v${VERSION}"
-          NOTES="Defers Headroom installation until requested token-saver settings are saved, avoiding stale ML-enabled settings during startup."
+          NOTES="Fixes OpenCode reasoning formats and effort levels, adds no-auth proxy-pool failover, and restores tool names and IDs in passthrough streams."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes --cleanup-tag

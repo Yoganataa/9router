@@ -289,3 +289,43 @@ describe("extractReasoningText (response shapes)", () => {
     expect(extractReasoningText({ content: "hello" })).toBe("");
   });
 });
+
+ 
+// Transport-declared thinking format: Responses endpoints may accept different fields
+// than the same provider's Chat Completions endpoint.
+describe("transport-declared thinkingFormat (Responses endpoints)", () => {
+  const responsesBody = (effort) => ({ input: [{ role: "user", content: "hi" }], reasoning: { effort } });
+  const chatBody = (effort) => ({ messages: [{ role: "user", content: "hi" }], reasoning_effort: effort });
+
+  it("OpenCode Go /responses nests reasoning and drops Chat-shaped fields", () => {
+    const out = apply("openai-responses", "deepseek-v4.1-flash", responsesBody("high"), "opencode-go");
+    expect(out.reasoning).toEqual({ effort: "high", summary: "auto" });
+    expect(out.reasoning_effort).toBeUndefined();
+    expect(out.thinking).toBeUndefined();
+  });
+
+  it("OpenCode Go Chat Completions keeps the model-native DeepSeek shape", () => {
+    const out = apply("openai", "deepseek-v4.1-flash", chatBody("high"), "opencode-go");
+    expect(out.thinking).toEqual({ type: "enabled" });
+    expect(out.reasoning_effort).toBe("high");
+    expect(out.reasoning).toBeUndefined();
+  });
+
+  it("OpenCode Go /responses omits reasoning when effort is none", () => {
+    const out = apply("openai-responses", "deepseek-v4.1-flash", responsesBody("none"), "opencode-go");
+    expect(out.reasoning).toBeUndefined();
+    expect(out.reasoning_effort).toBeUndefined();
+    expect(out.thinking).toBeUndefined();
+  });
+
+  it("Muse /responses keeps nested reasoning through its transport declaration", () => {
+    const out = apply("openai-responses", "muse-spark-1.3", responsesBody("high"), "muse");
+    expect(out.reasoning).toEqual({ effort: "high", summary: "auto" });
+    expect(out.reasoning_effort).toBeUndefined();
+  });
+
+  it("a provider without transport declaration retains existing behavior", () => {
+    const out = apply("openai-responses", "oc/space-bunny-free", chatBody("high"), "oc");
+    expect(out.reasoning_effort).toBe("high");
+  });
+});
